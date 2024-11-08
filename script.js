@@ -44,7 +44,7 @@ function stringToHue(str) {
 	return (Math.abs(hash) % 18)*20; // Ensure the hue is between 0 and 359
 }
 
-function getPieData(graph, clasz) {
+function getBubbleData(graph, clasz) {
 	
 	// console.log(clasz.data.id);
 	// Retrieve and analyze methods from the clasz object
@@ -83,7 +83,7 @@ function getPieData(graph, clasz) {
 }
 
 // Function to draw the pie chart for a given clasz object
-function drawPieChart(data) {
+function drawBubble(data) {
 	// Set up the pie chart
 	const width = 30;
 	const radius = width / 2;
@@ -124,7 +124,7 @@ function drawPieChart(data) {
 	return svg.node();  // Return the pie chart SVG element
 }
 
-function drawHoneycombLayout(graph, pkg) {
+function drawBubbleTea(graph, pkg) {
 	const claszList = classes(graph, pkg);  // Get all clasz objects
 	const pkgName = name(pkg);  // Get the package name
 
@@ -180,14 +180,14 @@ function drawHoneycombLayout(graph, pkg) {
 		.attr("stroke", "black");
 
 	// Calculate positions for each pie chart in a grid-like layout
-	claszList.map((clasz)=>getPieData(graph,clasz)).forEach((data,index) => {
+	claszList.map((clasz)=>getBubbleData(graph,clasz)).forEach((data,index) => {
 
 		// Calculate the X and Y positions of each pie in the grid
 		const xPos = positions[index][0];
 		const yPos = positions[index][1];
 
 		// Create and position each pie chart
-		const pieChart = drawPieChart(data);
+		const pieChart = drawBubble(data);
 		svg.node().appendChild(pieChart);  // Append the pie chart to the main SVG container
 
 		// Position the pie chart at the calculated x, y
@@ -230,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
 					);
 
 					if (pkgNode) {
-						drawHoneycombLayout(jsonData, pkgNode);  // Call the function to draw the pie chart with clasz
+						drawBubbleTea(jsonData, pkgNode);  // Call the function to draw the pie chart with clasz
 					} else {
 						alert("No node with 'Structure' label found.");
 					}
