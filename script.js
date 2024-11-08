@@ -176,7 +176,7 @@ function drawHoneycombLayout(graph, pkg) {
 			a${bottomCornerRadius},${bottomCornerRadius} 0 0 1 -${bottomCornerRadius},-${bottomCornerRadius}
 			V0 Z
 		`)
-		.attr("fill", "hsl(22, 55%, 81%)")
+		.attr("fill", "hsl(22, 80%, 81%)")
 		.attr("stroke", "black");
 
 	// Calculate positions for each pie chart in a grid-like layout
