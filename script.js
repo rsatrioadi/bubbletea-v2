@@ -44,32 +44,11 @@ function stringToHue(str) {
 	return (Math.abs(hash) % 18)*20; // Ensure the hue is between 0 and 359
 }
 
-// Function to draw the pie chart for a given clasz object
-function drawPieChart(graph, clasz) {
+function getPieData(graph, clasz) {
+	
 	// console.log(clasz.data.id);
 	// Retrieve and analyze methods from the clasz object
 	const methodList = methods(graph, clasz);
-
-	// Set up the pie chart
-	const width = 30;
-	const radius = width / 2;
-
-	// If methodList is empty, return a black circle
-	if (methodList.length === 0) {
-
-		// Create an SVG circle
-		const svg = d3.create("svg")
-			.attr("width", width)
-			.attr("height", width)
-			.append("g")
-			.attr("transform", `translate(${width / 2}, ${width / 2})`);
-
-		svg.append("circle")
-			.attr("r", radius)
-			.attr("fill", "black"); // Fill the circle with black
-
-		return svg.node();  // Return the black circle
-	}
 
 	// Create an object to store counts of each unique layer type
 	const layerCounts = {};
@@ -100,6 +79,31 @@ function drawPieChart(graph, clasz) {
 		// console.log(result);
 		return result;
 	});
+	return data;
+}
+
+// Function to draw the pie chart for a given clasz object
+function drawPieChart(data) {
+	// Set up the pie chart
+	const width = 30;
+	const radius = width / 2;
+
+	// If methodList is empty, return a black circle
+	if (data.length === 0) {
+
+		// Create an SVG circle
+		const svg = d3.create("svg")
+			.attr("width", width)
+			.attr("height", width)
+			.append("g")
+			.attr("transform", `translate(${width / 2}, ${width / 2})`);
+
+		svg.append("circle")
+			.attr("r", radius)
+			.attr("fill", "black"); // Fill the circle with black
+
+		return svg.node();  // Return the black circle
+	}
 
 	const svg = d3.create("svg")
 		.attr("width", width)
@@ -176,14 +180,14 @@ function drawHoneycombLayout(graph, pkg) {
 		.attr("stroke", "black");
 
 	// Calculate positions for each pie chart in a grid-like layout
-	claszList.forEach((clasz, index) => {
+	claszList.map((clasz)=>getPieData(graph,clasz)).forEach((data,index) => {
 
 		// Calculate the X and Y positions of each pie in the grid
 		const xPos = positions[index][0];
 		const yPos = positions[index][1];
 
 		// Create and position each pie chart
-		const pieChart = drawPieChart(graph, clasz);
+		const pieChart = drawPieChart(data);
 		svg.node().appendChild(pieChart);  // Append the pie chart to the main SVG container
 
 		// Position the pie chart at the calculated x, y
