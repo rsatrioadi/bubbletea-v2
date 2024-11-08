@@ -69,7 +69,7 @@ function getBubbleData(graph, clasz) {
 	const data = Object.keys(layerCounts).map(layerType => {
 		const hue = stringToHue(layerType);  // Hash the layer name to a hue value
 		const color = `hsl(${hue}, 80%, 40%)`;  // Apply HSL color formula
-		const test = "hsl(80, 80%, 40%)"
+		const _ = "hsl(80, 80%, 40%)"; // color test
 
 		const result = {
 			layer: layerType,
@@ -140,7 +140,7 @@ function drawBubbleTea(graph, pkg) {
 		const drow = (index/twoRowNumCols)|0;
 		const irow = ((index%twoRowNumCols)/numCols)|0;
 		const x = pieWidth / 2 + padding*1.5 + irow * (pieWidth/2) + (index%twoRowNumCols - irow*numCols)*(pieWidth+padding);
-		const y = pieWidth*2 + padding*1.5 + (drow * 2 + irow) * (pieWidth + padding/3);
+		const y = pieWidth*2.5 + padding*1.5 + (drow * 2 + irow) * (pieWidth + padding/3);
 		positions.push([x,y]);
 	}
 	let maxX = 0;
@@ -203,7 +203,7 @@ function drawBubbleTea(graph, pkg) {
 		.text(pkgName);
 
 	// Append the entire layout to the DOM (e.g., body or specific container)
-	document.body.appendChild(svg.node());
+	document.getElementById("chart-container").appendChild(svg.node());
 }
 
 
