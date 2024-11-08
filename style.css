@@ -1,0 +1,43 @@
+/* Reset some default styles */
+body,
+h1,
+p {
+	margin: 0;
+	padding: 0;
+	font-family: Arial, sans-serif;
+}
+
+/* Center content and style the body */
+body {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	height: 100vh;
+	background-color: #f0f0f0;
+	color: #333;
+}
+
+/* Style the header */
+header {
+	background-color: #2c3e50;
+	color: white;
+	padding: 20px;
+	width: 100%;
+	text-align: center;
+}
+
+/* Style the chart container */
+#chart-container {
+	width: 300px;
+	height: 300px;
+	margin-top: 50px;
+	position: relative;
+}
+
+/* Footer style */
+footer {
+	position: absolute;
+	bottom: 10px;
+	font-size: 14px;
+}
