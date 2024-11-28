@@ -615,14 +615,24 @@ function wrapSvgContentInGroup(svg) {
 	return group; // Return the newly created group
 }
 
+// Helper function to parse the transform string
+function parseTransform(transform) {
+	const translateMatch = /translate\(([^,]+),?([^,]*)\)/.exec(transform);
+	const scaleMatch = /scale\(([^)]+)\)/.exec(transform);
 
+	return {
+		x: translateMatch ? parseFloat(translateMatch[1]) : 0,
+		y: translateMatch && translateMatch[2] ? parseFloat(translateMatch[2]) : 0,
+		k: scaleMatch ? parseFloat(scaleMatch[1]) : 1,
+	};
+}
 
 document.addEventListener('DOMContentLoaded', () => {
 	function handleFileUpload(event) {
 		const file = event.target.files[0]; // Get the file selected by the user
 
 		if (!file) {
-			alert("Please select a JSON file.");
+			// alert("Please select a JSON file.");
 			return;
 		}
 
@@ -631,6 +641,10 @@ document.addEventListener('DOMContentLoaded', () => {
 		reader.onload = function (e) {
 			const jsonData = JSON.parse(e.target.result);
 			if (jsonData && jsonData.elements && Array.isArray(jsonData.elements.nodes)) {
+
+				document
+					.getElementById("filename")
+					.textContent = `BubbleTea 2.0 – ${file.name}`;
 
 				const chartContainer = document.getElementById("chart-container");
 				chartContainer.innerHTML = "";
@@ -653,18 +667,42 @@ document.addEventListener('DOMContentLoaded', () => {
 					const divHeight = chartContainer.clientHeight;
 					const svgWidth = svg.attr("width");
 					// const svgHeight = svg.attr("height");
-					const scale = divWidth/svgWidth * 0.9;
+					const scale = divWidth/svgWidth * 0.6;
 
 					const g = wrapSvgContentInGroup(svg);
-					g.attr("transform", `scale(${scale})`);
+					g.attr("transform", `translate(${divWidth*0.2}, 12) scale(${scale})`);
+
+					let previousTransform = d3.zoomIdentity; // Initial state (identity transform)
+
+
 					svg
 						.attr("width", divWidth)
 						.attr("height", divHeight)
 						.call(
 							d3.zoom().on('zoom', ({ transform }) => {
-								g.attr('transform', transform);
+								// Calculate the delta
+								const delta = {
+									x: transform.x - previousTransform.x,
+									y: transform.y - previousTransform.y,
+									k: transform.k / previousTransform.k, // Scale is multiplicative
+								};
+
+								// Apply the delta to the existing transform of the group
+								const existing = parseTransform(g.attr('transform') || "");
+
+								const updatedTransform = {
+									x: existing.x + delta.x,
+									y: existing.y + delta.y,
+									k: existing.k * delta.k,
+								};
+
+								// Set the updated transform
+								g.attr('transform', `translate(${updatedTransform.x}, ${updatedTransform.y}) scale(${updatedTransform.k})`);
+
+								// Update the previousTransform for the next zoom event
+								previousTransform = transform;
 							})
-						);;
+						);
 
 					window.addEventListener('resize', () => {
 						const newWidth = chartContainer.clientWidth;
