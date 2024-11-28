@@ -1,4 +1,4 @@
-import { stringToHue, arraysEqual, average, sum } from './utils.js';
+import { stringToHue, arraysEqual, average, sum, max } from './utils.js';
 
 function nodeName(node) {
 	return node.data.properties.simpleName;
@@ -68,6 +68,7 @@ const getBubbleDataWithContext = (context) => (clasz) => {
 	const bubbleData = Object.entries(layerCounts).map(([layerType, count]) => ({
 		layer: layerType,
 		count,
+		valid: context.layers.includes(layerType),
 		hue: stringToHue(layerType)
 	}));
 	
@@ -117,7 +118,7 @@ const drawBubbleWithContext = (context) =>  (data) => {
 	const {class:clasz,bubbleData} = data;
 
 	// Set up the pie chart
-	const width = 30;
+	const width = 20;
 	const radius = width / 2;
 
 	// Create an SVG circle
@@ -155,7 +156,7 @@ const drawBubbleWithContext = (context) =>  (data) => {
 		.enter()
 		.append("path")
 		.attr("d", arc)
-		.attr("fill", d=> `hsl(${d.data.hue}, 90%, 40%)`);
+		.attr("fill", d=> d.data.valid?`hsl(${d.data.hue}, 90%, 40%)`:"black");
 
 	svg.append("circle")
 		.attr("r", radius)
@@ -295,15 +296,15 @@ const createGradient = (svg) => {
 };
 
 // Function to draw the layout container
-const drawLayoutContainer = (svg, width, height, bubbleRadius, padding, fill) => {
+const drawLayoutContainer = (svg, width, height, bubbleRadius, padding, fill, stroke) => {
 	const bottomCornerRadius = 20;
 	svg.append("rect")
 		.attr("x", padding / 2)
 		.attr("y", padding / 2)
 		.attr("width", width - padding)
 		.attr("height", bubbleRadius)
-		.attr("fill", "none")
-		.attr("stroke", "black");
+		.attr("fill", stroke)
+		.attr("stroke", stroke);
 
 	svg.append("path")
 		.attr("d", `
@@ -316,7 +317,7 @@ const drawLayoutContainer = (svg, width, height, bubbleRadius, padding, fill) =>
             V${padding / 2 + bubbleRadius} Z
         `)
 		.attr("fill", fill)
-		.attr("stroke", "black");
+		.attr("stroke", stroke);
 };
 
 // Main function to create the bubble tea layout
@@ -328,7 +329,7 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 	if (data.length === 0) return null;
 
 	const pkgName = nodeName(pkg);
-	const bubbleRadius = 30;
+	const bubbleRadius = 20;
 	const padding = 10;
 
 	// Calculate positions and layout dimensions
@@ -343,23 +344,25 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 	createGradient(g);
 
 	// Draw layout container with calculated dimensions
-	const fill = dominant.length > 0 ? `hsl(${average(dominant.map(stringToHue))}, 60%, 80%)` : "hsl(0, 0%, 80%)";
-	drawLayoutContainer(g, layoutWidth, layoutHeight, bubbleRadius, padding, fill);
+	const my_hue = average(dominant.map(stringToHue));
+	const fill = dominant.length > 0 ? `hsl(${my_hue}, 60%, 80%)` : "hsl(0, 0%, 80%)";
+	const stroke = dominant.length > 0 ? `hsl(${my_hue}, 90%, 40%)` : "hsl(0, 0%, 40%)";
+	drawLayoutContainer(g, layoutWidth, layoutHeight, bubbleRadius, padding, fill, stroke);
 
 	// Sort and map bubble data to draw pie charts
 	data
 		.sort((a, b) => compare(a.bubbleData)(b.bubbleData))
 		.forEach((d, index) => {
 			const [xPos, yPos] = positions[index];
-			const pieChart = drawBubble(d);
-			g.node().appendChild(pieChart.node());
-			d3.select(pieChart.node()).attr("transform", `translate(${xPos}, ${yPos})`);
+			const bubble = drawBubble(d);
+			g.node().appendChild(bubble.node());
+			d3.select(bubble.node()).attr("transform", `translate(${xPos}, ${yPos})`);
 		});
 
 	// Add package name text
 	g.append("text")
 		.attr("x", layoutWidth / 2)
-		.attr("y", padding / 2 + 20)
+		.attr("y", layoutHeight + 20)
 		.attr("text-anchor", "middle")
 		.style("font-size", "20px")
 		.text(pkgName);
@@ -374,7 +377,7 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 	return svg;
 };
 
-const layoutBubbleTeaDataD3 = (context) => (bubbleTeaDataArray) => {
+const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 
 	const drawBubbleTea = drawBubbleTeaWithContext(context);
 
@@ -405,85 +408,172 @@ const layoutBubbleTeaDataD3 = (context) => (bubbleTeaDataArray) => {
 		if (key in layers) layers[key].push(bubbleTeaData);
 	});
 
-	const svgWidth = 1200;
-	const layerHeight = 400; // Height allocated for each layer
-	const bubbleSpacing = 50; // Spacing between bubble groups
-	const groupWidth = 300; // Width for each group in a layer
+	let tableWidth = 1200;
+	const bubbleSpacing = 30; // Spacing between bubble groups
+
+	let totalHeight = 0;
 
 	const svg = d3
 		.create("svg")
-		.attr("width", svgWidth + layerHeight)
-		.attr(
-			"height",
-			layerOrder.length * layerHeight
-		);
+		.attr("width", tableWidth);
 
-	Object.entries(layers).forEach(([layerName, items], layerIndex) => {
-		if (items.length === 0 && layerName.includes(",")) return;
-		const yOffset = layerIndex * layerHeight;
+	let grey_area = null;
+	let grey_height = 0;
+	if ("" in layers) {
+		// draw the cross-cutting first
+		const layerName = "Cross-cutting";
+		const items = layers[""];
+
+		if (items.length > 0) {
+
+			const layer_group = svg.append("g")
+				.attr("x", 0)
+				.attr("y", 0);
+
+			const fill = "hsl(0, 0%, 95%)";
+			const stroke = "hsl(0, 0%, 40%)";
+
+			// Render each item in this layer
+			const bboxes = [];
+			const groups = items.map(drawBubbleTea).filter(e => e != null).map(innerSvg => {
+
+				const pkg_group = layer_group
+					.append("g");
+				pkg_group.html(innerSvg.node().innerHTML);
+				// console.log(innerSvg.node());
+				const bbox = measureSvgContent(innerSvg);
+				bboxes.push(bbox);
+				return pkg_group;
+			});
+
+			if (bboxes.length > 0) {
+				const layerWidth = max(bboxes.map(b => b.width)) + 2 * bubbleSpacing;
+				console.log(layerName, layerWidth);
+
+				let yOffset = 2 * bubbleSpacing;
+
+				layer_group
+					.attr("transform", `translate(${tableWidth - layerWidth}, 0)`);
+
+				groups.forEach((g, i) => {
+					const bbox = bboxes[i];
+					g.attr("transform", `translate(${(layerWidth - bbox.width)/2}, ${yOffset})`);
+					yOffset += bbox.height + bubbleSpacing;
+				});
+
+				// Add layer title
+
+				layer_group.insert("text", ":first-child")
+					.attr("x", 10)
+					.attr("y", 24)
+					.attr("font-size", 20)
+					.attr("font-weight", "bold")
+					.attr("fill", "white")
+					.text(layerName);
+
+				layer_group.insert("rect", ":first-child")
+					.attr("x", 0)
+					.attr("y", 0)
+					.attr("width", layerWidth)
+					.attr("height", 36)
+					.attr("fill", stroke);
+
+				grey_area = layer_group.insert("rect", ":first-child")
+					.attr("x", 0)
+					.attr("y", 0)
+					.attr("width", layerWidth)
+					.attr("fill", fill);
+
+				tableWidth -= layerWidth;
+				grey_height = yOffset;
+			}
+		}
+	}
+
+	let last_rect = null;
+	Object.entries(layers).filter(([layerName, _])=>layerName).forEach(([layerName, items]) => {
+		if (items.length === 0) return;
 
 		const layer_group = svg.append("g")
 			.attr("x", 0)
-			.attr("y", 0)
-			.attr("transform", `translate(0, ${yOffset})`);
+			.attr("y", 0);
+
+		const layerNames = layerName ? layerName.split(",") : [];
+		const my_hue = average(layerNames.map(stringToHue));
+		const fill = layerNames.length > 0 ? `hsl(${my_hue}, 50%, 90%)` : "hsl(0, 0%, 90%)";
+		const stroke = layerNames.length > 0 ? `hsl(${my_hue}, 90%, 40%)` : "hsl(0, 0%, 40%)";
 
 		// Add layer title
+		layer_group
+			.append("rect")
+			.attr("x", 0)
+			.attr("y", 0)
+			.attr("width", tableWidth)
+			.attr("height", 36)
+			.attr("fill", stroke);
+
 		layer_group
 			.append("text")
 			.attr("x", 10)
 			.attr("y", 24)
 			.attr("font-size", 20)
 			.attr("font-weight", "bold")
-			.text(layerName || "Cross-cutting");
+			.attr("fill", "white")
+			.text(layerName);
 
-		if (false) { //(layerName === "") {
-			// Adjust position for cross-cutting: far right column
-			const xOffset = svgWidth - groupWidth; // Align at the far right
-			items.forEach((bubbleTeaData, groupIndex) => {
-				const bubbleSVG = drawBubbleTea(bubbleTeaData);
-				layer_group
-					.append("g")
-					.attr("transform", `translate(${xOffset}, ${groupIndex * bubbleSpacing})`)
-					.html(bubbleSVG.node().outerHTML);
-			});
-		} else {
-			// Render each item in this layer
-			const bboxes = [];
-			const groups = items.map(drawBubbleTea).filter(e => e != null).map(innerSvg => {
-					
-				const g = layer_group
-					.append("g");
-				g.html(innerSvg.node().outerHTML);
-				console.log(innerSvg.node());
-				const bbox = measureSvgContent(innerSvg);
-				bboxes.push(bbox);
-				return g;
-			});
+		// Render each item in this layer
+		const bboxes = [];
+		const groups = items.map(drawBubbleTea).filter(e => e != null).map(innerSvg => {
+				
+			const pkg_group = layer_group
+				.append("g");
+			pkg_group.html(innerSvg.node().innerHTML);
+			// console.log(innerSvg.node());
+			const bbox = measureSvgContent(innerSvg);
+			bboxes.push(bbox);
+			return pkg_group;
+		});
 
-			let xOffset = 0;
+		const layerHeight = max(bboxes.map(b => b.height))+2*bubbleSpacing;
+		console.log(layerName, layerHeight);
 
-			groups.forEach((g,i) => {
-				const bbox = bboxes[i];
-				g.attr("transform", `translate(${xOffset - bbox.x}, ${layerHeight-bbox.height})`);
-				xOffset += bbox.width + bubbleSpacing;
-			});
+		let xOffset = bubbleSpacing;
+		let yOffset = layerHeight;
 
-			// let xOffset = 0;
-			// items.forEach((bubbleTeaData, groupIndex) => {
-			// 	// const xOffset = groupIndex * groupWidth;
-			// 	xOffset += bubbleSpacing;
+		layer_group
+			.attr("transform", `translate(0, ${totalHeight})`);
+		totalHeight += layerHeight + bubbleSpacing;
 
-			// 	// Call the existing drawBubbleTea function to get the SVG for the bubble
-			// 	const bubbleSVG = drawBubbleTea(bubbleTeaData);
-			// 	if (bubbleSVG) {
-			// 		g.node().appendChild(bubbleSVG.node());
-			// 		xOffset += bubbleSVG.node().getBBox().width;
-			// 		console.log(bubbleSVG.node().getBBox());
-			// 		bubbleSVG.attr("transform", `translate(${xOffset}, 0)`);
-			// 	}
-			// });
-		}
+		groups.forEach((g,i) => {
+			const bbox = bboxes[i];
+			if (xOffset + bbox.width + bubbleSpacing > tableWidth) {
+				xOffset = bubbleSpacing;
+				yOffset += layerHeight;
+				totalHeight += layerHeight;
+			}
+			g.attr("transform", `translate(${xOffset - bbox.x}, ${yOffset - bbox.height})`);
+			xOffset += bbox.width + bubbleSpacing;
+		});
+
+		last_rect = layer_group.insert("rect", ":first-child")
+			.attr("x", 0)
+			.attr("y", 0)
+			.attr("width", tableWidth)
+			.attr("height", yOffset + bubbleSpacing)
+			.attr("fill", fill);
 	});
+	
+	const final_height = max([grey_height, totalHeight]);
+	svg.attr("height", final_height);
+
+	svg.insert("rect", ":first-child")
+		.attr("x", 0)
+		.attr("y", 0)
+		.attr("width", tableWidth)
+		.attr("height", final_height)
+		.attr("fill", last_rect.attr("fill"));
+
+	if (grey_area) grey_area.attr("height", final_height);
 
 	return svg;
 }
@@ -511,6 +601,21 @@ function measureSvgContent(svg) {
 	return bbox;
 }
 
+function wrapSvgContentInGroup(svg) {
+	// Select all children of the SVG
+	const children = svg.node().innerHTML;
+
+	svg.node().innerHTML = "";
+	// Append a new <g> to the SVG
+	const group = svg.append("g");
+
+	// Move all existing children into the <g>
+	group.node().innerHTML = children;
+
+	return group; // Return the newly created group
+}
+
+
 
 document.addEventListener('DOMContentLoaded', () => {
 	function handleFileUpload(event) {
@@ -526,21 +631,51 @@ document.addEventListener('DOMContentLoaded', () => {
 		reader.onload = function (e) {
 			const jsonData = JSON.parse(e.target.result);
 			if (jsonData && jsonData.elements && Array.isArray(jsonData.elements.nodes)) {
+
+				const chartContainer = document.getElementById("chart-container");
+				chartContainer.innerHTML = "";
 				const context = {
 					layers: [null, 'Presentation Layer', 'Service Layer', 'Domain Layer', 'Data Source Layer'],
 					graph: jsonData
 				};
-				const packages = context.graph.elements.nodes.filter(node => node.data.labels.includes("Container"));
+				const packages = context.graph.elements.nodes.filter(node => node.data.labels.includes("Container") && !node.data.labels.includes("Structure"));
 				const getBubbleTeaData = getBubbleTeaDataWithContext(context);
-				const drawBubbleTea = drawBubbleTeaWithContext(context);
+				const drawServingTable = drawServingTableWithContext(context);
 
-				const svg = layoutBubbleTeaDataD3(context)(packages.map(getBubbleTeaData));
+				const svg = drawServingTable(packages.map(getBubbleTeaData));
 
 				// packages.forEach(pkgNode => {
 				// 	const bubbleTeaData = getBubbleTeaData(pkgNode);
 				// 	const svgNode = drawBubbleTea(bubbleTeaData);
 
-				if (svg) document.getElementById("chart-container").appendChild(svg.node());
+				if (svg) {
+					const divWidth = chartContainer.clientWidth;
+					const divHeight = chartContainer.clientHeight;
+					const svgWidth = svg.attr("width");
+					// const svgHeight = svg.attr("height");
+					const scale = divWidth/svgWidth * 0.9;
+
+					const g = wrapSvgContentInGroup(svg);
+					g.attr("transform", `scale(${scale})`);
+					svg
+						.attr("width", divWidth)
+						.attr("height", divHeight)
+						.call(
+							d3.zoom().on('zoom', ({ transform }) => {
+								g.attr('transform', transform);
+							})
+						);;
+
+					window.addEventListener('resize', () => {
+						const newWidth = chartContainer.clientWidth;
+						const newHeight = chartContainer.clientHeight;
+
+						svg.attr("width", newWidth)
+							.attr("height", newHeight);
+					});
+
+					chartContainer.appendChild(svg.node());
+				}
 				// });
 			} else {
 				alert("The JSON does not contain the expected structure.");
@@ -552,11 +687,11 @@ document.addEventListener('DOMContentLoaded', () => {
 	}
 
 	// Attach the event listener to the file input
-	document.getElementById('file-input').addEventListener('change', handleFileUpload);
+	document.getElementById('file-selector').addEventListener('change', handleFileUpload);
 
 	// Optionally, you can trigger the file input when the button is clicked (to give the user a clearer interface)
 	document.getElementById('upload-button').addEventListener('click', () => {
-		document.getElementById('file-input').click();  // Trigger file input click when the button is clicked
+		document.getElementById('file-selector').click();  // Trigger file input click when the button is clicked
 	});
 });
 

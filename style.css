@@ -1,43 +1,248 @@
-/* Reset some default styles */
-body,
-h1,
-p {
-	margin: 0;
-	padding: 0;
-	font-family: Arial, sans-serif;
-}
-
-/* Center content and style the body */
 body {
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	height: 100vh;
-	background-color: #f0f0f0;
-	color: #333;
+	font-family: Helvetica, "Liberation Sans", Arial, sans-serif;
+	font-size: 13px;
+	color: rgba(0, 0, 0, 0.85);
 }
 
-/* Style the header */
-header {
-	background-color: #2c3e50;
-	color: white;
-	padding: 20px;
-	width: 100%;
+#file-selector {
+	display: none;
+}
+
+#sidebar {
+	position: fixed;
+	right: 0;
+	top: 36px;
+	bottom: 0;
+	width: 270px;
+	background-color: #fafafa;
+	/* border-right: 1px solid #cacaca; */
+	box-shadow: 0px 0px 3px rgba(101, 101, 101, 0.5);
+	z-index: 9998;
+	overflow-y: scroll;
+}
+
+#chart-container {
+	position: absolute;
+	left: 0px;
+	top: 36px;
+	bottom: 0px;
+	right: 270px;
+	width: calc(100vw - 270px);
+	height: 100%;
+	z-index: 1;
+}
+
+h1 {
+	font-size: 1.1em;
+	font-weight: bold;
 	text-align: center;
 }
 
-/* Style the chart container */
-#chart-container {
-	width: 100%;
-	height: 300px;
-	margin-top: 50px;
-	position: relative;
+h2 {
+	font-size: 1em;
+	font-weight: bold;
+	text-align: center;
+	margin-top: 3px;
+	margin-bottom: 9px;
 }
 
-/* Footer style */
-footer {
+.menu {
+	background-color: #fafafa;
+	padding: 4px 12px 20px 12px;
+	border-top: 1px solid #cacaca;
+}
+
+.notice {
+	background-color: #ffffec;
+	border-radius: 4px;
+	margin: 2px 2px 2px 2px;
+	padding: 2px 6px;
+	border: 1px solid #cacaca;
+	width: fit-content;
+}
+
+.titlebar {
+	position: fixed;
+	left: 0;
+	top: 0;
+	height: 36px;
+	min-height: 36px;
+	max-height: 36px;
+	right: 0;
+	/* background-color: #fafafa; */
+	background-image: linear-gradient(to bottom,
+			hsl(0, 0%, 95%),
+			hsl(0, 0%, 87%));
+	box-shadow: inset hsla(0, 0%, 100%, 0.5) 0 1px 1px;
+	border-bottom: 1px solid #cacaca;
+	z-index: 9999;
+	vertical-align: baseline;
+}
+
+#filename {
 	position: absolute;
-	bottom: 10px;
-	font-size: 14px;
+	left: 0;
+	top: 0;
+	height: 36px;
+	min-height: 36px;
+	max-height: 36px;
+	right: 0;
+	z-index: -1;
+}
+
+.toolbutton {
+	margin: 8px 0px 4px 4px;
+}
+
+button.sidebar,
+select.dd {
+	background-image: linear-gradient(hsl(0, 0%, 99%), hsl(0, 0%, 94%));
+	box-shadow: hsla(0, 0%, 0%, 0.3) 0 1px 1px -1px;
+
+	border-radius: 4px;
+	border: 1px solid hsl(0, 1%, 82%);
+	border-top-color: hsl(0, 0%, 83%);
+	border-bottom-color: hsl(0, 0%, 76%);
+	text-align: center;
+	color: rgb(80, 80, 80);
+}
+
+button.sidebar:active,
+select.dd:active {
+	background-image: linear-gradient(hsl(0, 0%, 89%), hsl(0, 0%, 86%));
+	box-shadow: hsla(0, 0%, 0%, 0.5) 0 1px 1px -1px, inset 0 1px 1px -1px white;
+}
+
+button.toolbutton {
+	border-radius: 4px;
+	background-image: linear-gradient(hsl(0, 0%, 97%), hsl(0, 0%, 80%));
+	box-shadow: none;
+	border: 1px solid hsl(0, 0%, 56%);
+	color: hsl(0, 0%, 23%);
+}
+
+button.toolbutton:active {
+	background-image: linear-gradient(hsl(0, 0%, 56%), hsl(0, 0%, 73%));
+	box-shadow: none;
+	border: 1px solid hsl(0, 0%, 56%);
+	color: white;
+}
+
+.sidebar-tab {
+	display: block;
+}
+
+.tab-bar {
+	display: flex;
+	background-color: #fafafa;
+	border-bottom: 1px solid #c0c0c0;
+}
+
+/* Reset default list styling */
+ul.tabs {
+	margin: 0;
+	padding: 0;
+	list-style-type: none;
+}
+
+/* Style for the tabs container */
+.tabs {
+	display: flex;
+	background-color: #fafafa;
+	border-bottom: 1px solid #c0c0c0;
+}
+
+/* Style for each tab */
+.tabs li {
+	flex-grow: 1;
+}
+
+/* Style for tab links */
+.tabs li a {
+	display: block;
+	padding: 10px;
+	text-align: center;
+	text-decoration: none;
+	color: #000;
+	background-color: #fafafa;
+	transition: background-color 0.3s ease;
+}
+
+/* Style for the active tab */
+.tabs li a.active {
+	color: #fff;
+	background-color: #007aff;
+}
+
+/* Style for the tab content container */
+.tab-content {
+	padding: 20px;
+	background-color: #fff;
+	border: 1px solid #c0c0c0;
+}
+
+.download-text {
+	display: none;
+}
+
+#highlight {
+	width: 234px;
+}
+
+.toolbutton {
+	height: 24px;
+	min-height: 24px;
+	max-height: 24px;
+	width: 30px;
+	min-width: 30px;
+	max-width: 30px;
+}
+
+.target-popper {
+	display: none;
+	max-width: 500px;
+	max-height: 200px;
+	padding: 4px;
+	text-align: left;
+	border-radius: 0;
+	border: 1px solid #ccc;
+	background: #000;
+	color: #fafafa;
+	z-index: 2;
+	overflow: scroll;
+}
+
+.target-popper.active {
+	display: block;
+}
+
+#infobox {
+	width: 270px;
+	position: fixed;
+	right: 20px;
+	bottom: 20px;
+	z-index: 2;
+	/* padding: 4px; */
+	background-color: #fafafa;
+	border-radius: 5px;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6),
+		0 11px 35px 2px rgba(0, 0, 0, 0.56), 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+#infotitle {
+	text-align: center;
+	border-bottom: 1px solid #9b999b;
+	background-image: linear-gradient(#eeecee, #d6d4d6);
+	padding: 4px;
+	height: 4px;
+	border-top-left-radius: inherit;
+	border-top-right-radius: inherit;
+}
+
+#infobody {
+	height: auto;
+	padding: 4px;
+	border-bottom-left-radius: inherit;
+	border-bottom-right-radius: inherit;
+	display: block;
 }

@@ -4,24 +4,24 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>BubbleTeaV2</title>
-	<link rel="stylesheet" href="style.css"> <!-- Link to your CSS file -->
+	<title>BubbleTea 2.0</title>
+	<link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-	<header>
-		<h1>Welcome to BubbleTeaV2</h1>
-	</header>
+	<div class="titlebar">
+		<h1 id="filename">BubbleTea 2.0</h1>
+		<button id="upload-button" class="toolbutton">
+			<img class="icon icon-download" src="assets/upload.png" alt="upload" />
+			<input type="file" id="file-selector" class="toolbutton" accept=".json" />
+		</button>
+	</div>
+	<div id="sidebar">
+		<p>Test...</p>
+	</div>
 
-	<main>
-		<div id="chart-container" />
-		<input type="file" id="file-input" accept=".json" />
-		<button id="upload-button">Upload JSON</button>
-	</main>
-	<footer>
-		<p>BubbleTeaV2 &copy; 2024</p>
-	</footer>
+	<div id="chart-container"></div>
 
 	<script src="https://d3js.org/d3.v7.min.js"></script>
 	<script type="module" src="main.js"></script>
