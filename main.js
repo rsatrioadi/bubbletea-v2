@@ -1,4 +1,5 @@
 import { stringToHue, arraysEqual, average, sum, max } from './utils.js';
+import { createSignal } from './signal.js';
 
 function nodeName(node) {
 	return node.data.properties.simpleName;
@@ -62,7 +63,7 @@ const getBubbleDataWithContext = (context) => (clasz) => {
 			[layerType]: (counts[layerType] || 0) + 1
 		};
 	}, {});
-	console.log(clasz.data.id, layerCounts);
+	// console.log(clasz.data.id, layerCounts);
 
 	// Transform layerCounts into the desired array structure
 	const bubbleData = Object.entries(layerCounts).map(([layerType, count]) => ({
@@ -113,57 +114,64 @@ const dominatingLayersWithContext = (context) => (bubbleData) => {
 	return [];
 }
 
-const drawBubbleWithContext = (context) =>  (data) => {
+const drawBubbleWithContext = (context) => (data) => {
+	const { class: clasz, bubbleData } = data;
 
-	const {class:clasz,bubbleData} = data;
-
-	// Set up the pie chart
 	const width = 20;
 	const radius = width / 2;
 
-	// Create an SVG circle
-	const svg = d3.create("svg")
-		.attr("width", width+5)
-		.attr("height", width+5)
-		.append("g")
-		.attr("transform", `translate(${(width+5) / 2}, ${(width+5) / 2})`);
+	const bubble = d3.create("svg:g") // Create a group for easier composition
+		.attr("class", "bubble")
+		.style("pointer-events", "all")
+		.datum(clasz);
 
-	svg.append("circle")
-		.attr("r", radius+5/2)
+	const halo = bubble.append("circle")
+		.attr("r", radius + 5 / 2)
 		.attr("fill-opacity", 0.3)
-		.attr("fill", "black"); // Fill the circle with black
+		.attr("fill", "black");
 
-	// If methodList is empty, return a black circle
 	if (bubbleData.length === 0) {
-
-		svg.append("circle")
+		bubble.append("circle")
 			.attr("r", radius)
-			.attr("fill", "black"); // Fill the circle with black
+			.attr("fill", "black");
+	} else {
+		const pie = d3.pie().value(d => d.count).sort((a, b) => context.layers.indexOf(b.layer) - context.layers.indexOf(a.layer));
+		const arc = d3.arc().innerRadius(0).outerRadius(radius);
 
-
-		svg.append("circle")
-			.attr("r", radius)
-			.attr("fill", "url(#gradient)");
-
-		return svg;  // Return the black circle
+		bubble.selectAll("path")
+			.data(pie(bubbleData))
+			.enter()
+			.append("path")
+			.attr("d", arc)
+			.attr("fill", d => d.data.valid ? `hsl(${d.data.hue}, 90%, 40%)` : "black");
 	}
 
-	const pie = d3.pie().value(d => d.count).sort((a, b) => context.layers.indexOf(b.layer) - context.layers.indexOf(a.layer));
-	const arc = d3.arc().innerRadius(0).outerRadius(radius);
+	clasz.hoverSignal = createSignal();
+	clasz.hoverSignal.connect(context.infoPanel.renderInfo.bind(context.infoPanel));
 
-	svg.selectAll("path")
-		.data(pie(bubbleData))
-		.enter()
-		.append("path")
-		.attr("d", arc)
-		.attr("fill", d=> d.data.valid?`hsl(${d.data.hue}, 90%, 40%)`:"black");
-
-	svg.append("circle")
+	const circle = bubble.append("circle")
+		.attr("class", "shine")
 		.attr("r", radius)
 		.attr("fill", "url(#gradient)");
 
-	return svg;  // Return the pie chart SVG element
-}
+	// halo.on("mouseover", (event) => {
+	// 	// event.stopPropagation(); // Prevent interference from parent listeners
+	// 	console.log("halo hovered");
+	// 	clasz.hoverSignal.emit(clasz.data);
+	// });
+
+	// circle.on("mouseover", (event) => {
+	// 	// event.stopPropagation(); // Prevent interference from parent listeners
+	// 	console.log("shine hovered");
+	// 	clasz.hoverSignal.emit(clasz.data);
+	// });
+
+	// console.log(circle.datum());
+
+	return bubble;
+};
+
+
 
 const layerCompositionComparatorWithContext = (context) => {
 	const { layers } = context;
@@ -296,9 +304,10 @@ const createGradient = (svg) => {
 };
 
 // Function to draw the layout container
-const drawLayoutContainer = (svg, width, height, bubbleRadius, padding, fill, stroke) => {
+const drawLayoutContainer = (width, height, bubbleRadius, padding, fill, stroke) => {
 	const bottomCornerRadius = 20;
-	svg.append("rect")
+	const g = d3.create("svg:g");
+	g.append("rect")
 		.attr("x", padding / 2)
 		.attr("y", padding / 2)
 		.attr("width", width - padding)
@@ -306,7 +315,7 @@ const drawLayoutContainer = (svg, width, height, bubbleRadius, padding, fill, st
 		.attr("fill", stroke)
 		.attr("stroke", stroke);
 
-	svg.append("path")
+	g.append("path")
 		.attr("d", `
             M${padding / 2},${padding / 2 + bubbleRadius}
             h${width - padding}
@@ -318,6 +327,7 @@ const drawLayoutContainer = (svg, width, height, bubbleRadius, padding, fill, st
         `)
 		.attr("fill", fill)
 		.attr("stroke", stroke);
+	return g;
 };
 
 // Main function to create the bubble tea layout
@@ -337,8 +347,8 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 	const { layoutWidth, layoutHeight } = calculateLayoutDimensions(positions, bubbleRadius, padding);
 
 	// Create SVG container
-	const svg = d3.create("svg");
-	const g = svg.append("g");
+	// const svg = d3.create("svg");
+	const g = d3.create("svg:g");
 
 	// Create gradient
 	createGradient(g);
@@ -347,15 +357,20 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 	const my_hue = average(dominant.map(stringToHue));
 	const fill = dominant.length > 0 ? `hsl(${my_hue}, 60%, 80%)` : "hsl(0, 0%, 80%)";
 	const stroke = dominant.length > 0 ? `hsl(${my_hue}, 90%, 40%)` : "hsl(0, 0%, 40%)";
-	drawLayoutContainer(g, layoutWidth, layoutHeight, bubbleRadius, padding, fill, stroke);
-
+	const pkgG = drawLayoutContainer(layoutWidth, layoutHeight, bubbleRadius, padding, fill, stroke);
+	pkgG
+		.attr("class", "tea")
+		.style("pointer-events", "all")
+		.datum(pkg);
+	g.append(() => pkgG.node());
 	// Sort and map bubble data to draw pie charts
 	data
 		.sort((a, b) => compare(a.bubbleData)(b.bubbleData))
 		.forEach((d, index) => {
 			const [xPos, yPos] = positions[index];
 			const bubble = drawBubble(d);
-			g.node().appendChild(bubble.node());
+			// console.log("drawBubbleTeaWithContext", bubble);
+			g.append(() => bubble.node());
 			d3.select(bubble.node()).attr("transform", `translate(${xPos}, ${yPos})`);
 		});
 
@@ -367,14 +382,10 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 		.style("font-size", "20px")
 		.text(pkgName);
 
-	// resizeSVGToFitContents
-	// const bbox = g.node().getBBox();
+	pkg.hoverSignal = createSignal();
+	pkg.hoverSignal.connect(context.infoPanel.renderInfo.bind(context.infoPanel));
 
-	// svg
-	// 	.attr("width", bbox.width + 20)
-	// 	.attr("height", bbox.height + 20)
-		// .attr("viewBox", `${bbox.x - 10} ${bbox.y - 10} ${bbox.width + 20} ${bbox.height + 20}`);
-	return svg;
+	return g;
 };
 
 const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
@@ -408,14 +419,18 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 		if (key in layers) layers[key].push(bubbleTeaData);
 	});
 
-	let tableWidth = 1200;
+	const svgWidth = 1200;
+	let tableWidth = svgWidth;
 	const bubbleSpacing = 30; // Spacing between bubble groups
 
 	let totalHeight = 0;
 
-	const svg = d3
-		.create("svg")
-		.attr("width", tableWidth);
+	const servingTable = d3.create("svg");
+	const servingTableG = servingTable
+		.append("g")
+		.attr("x", 0)
+		.attr("y", 0);
+		// .attr("width", tableWidth);
 
 	let grey_area = null;
 	let grey_height = 0;
@@ -426,7 +441,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 
 		if (items.length > 0) {
 
-			const layer_group = svg.append("g")
+			const layer_group = servingTableG.append("g")
 				.attr("x", 0)
 				.attr("y", 0);
 
@@ -435,20 +450,20 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 
 			// Render each item in this layer
 			const bboxes = [];
-			const groups = items.map(drawBubbleTea).filter(e => e != null).map(innerSvg => {
+			const groups = items.map(drawBubbleTea).filter(e => e != null).map(tea => {
 
-				const pkg_group = layer_group
-					.append("g");
-				pkg_group.html(innerSvg.node().innerHTML);
+				// const pkg_group = layer_group
+				// 	.append("g");
+				// pkg_group.html(innerSvg.node().innerHTML);
 				// console.log(innerSvg.node());
-				const bbox = measureSvgContent(innerSvg);
+				const bbox = measureSvgContent(tea);
 				bboxes.push(bbox);
-				return pkg_group;
+				return tea;
 			});
 
 			if (bboxes.length > 0) {
 				const layerWidth = max(bboxes.map(b => b.width)) + 2 * bubbleSpacing;
-				console.log(layerName, layerWidth);
+				// console.log(layerName, layerWidth);
 
 				let yOffset = 2 * bubbleSpacing;
 
@@ -456,6 +471,8 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 					.attr("transform", `translate(${tableWidth - layerWidth}, 0)`);
 
 				groups.forEach((g, i) => {
+					layer_group.node().append(g.node());
+					console.log("drawServingTableWithContext", g);
 					const bbox = bboxes[i];
 					g.attr("transform", `translate(${(layerWidth - bbox.width)/2}, ${yOffset})`);
 					yOffset += bbox.height + bubbleSpacing;
@@ -486,6 +503,8 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 
 				tableWidth -= layerWidth;
 				grey_height = yOffset;
+
+				// servingTableG.append(() => layer_group.node());
 			}
 		}
 	}
@@ -494,7 +513,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 	Object.entries(layers).filter(([layerName, _])=>layerName).forEach(([layerName, items]) => {
 		if (items.length === 0) return;
 
-		const layer_group = svg.append("g")
+		const layer_group = servingTableG.append("g")
 			.attr("x", 0)
 			.attr("y", 0);
 
@@ -523,19 +542,15 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 
 		// Render each item in this layer
 		const bboxes = [];
-		const groups = items.map(drawBubbleTea).filter(e => e != null).map(innerSvg => {
-				
-			const pkg_group = layer_group
-				.append("g");
-			pkg_group.html(innerSvg.node().innerHTML);
-			// console.log(innerSvg.node());
-			const bbox = measureSvgContent(innerSvg);
+		const groups = items.map(drawBubbleTea).filter(e => e != null).map(tea => {
+
+			const bbox = measureSvgContent(tea);
 			bboxes.push(bbox);
-			return pkg_group;
+			return tea;
 		});
 
 		const layerHeight = max(bboxes.map(b => b.height))+2*bubbleSpacing;
-		console.log(layerName, layerHeight);
+		// console.log(layerName, layerHeight);
 
 		let xOffset = bubbleSpacing;
 		let yOffset = layerHeight;
@@ -544,7 +559,9 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 			.attr("transform", `translate(0, ${totalHeight})`);
 		totalHeight += layerHeight + bubbleSpacing;
 
-		groups.forEach((g,i) => {
+		groups.forEach((g, i) => {
+			layer_group.node().append(g.node());
+			console.log("drawServingTableWithContext", g);
 			const bbox = bboxes[i];
 			if (xOffset + bbox.width + bubbleSpacing > tableWidth) {
 				xOffset = bubbleSpacing;
@@ -561,12 +578,20 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 			.attr("width", tableWidth)
 			.attr("height", yOffset + bubbleSpacing)
 			.attr("fill", fill);
+
+		console.log("layer_group", layer_group);
+
+		// servingTableG.append(() => layer_group.node());
+
+		console.log("layer_group after append", servingTableG);
+		console.log(1, layer_group.select(".shine"));
+		console.log(2, servingTableG.select(".shine"));
 	});
+	console.log(3, servingTableG.select(".shine"));
 	
 	const final_height = max([grey_height, totalHeight]);
-	svg.attr("height", final_height);
 
-	svg.insert("rect", ":first-child")
+	servingTableG.insert("rect", ":first-child")
 		.attr("x", 0)
 		.attr("y", 0)
 		.attr("width", tableWidth)
@@ -575,10 +600,22 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 
 	if (grey_area) grey_area.attr("height", final_height);
 
-	return svg;
+	console.log("before return", servingTableG);
+
+	servingTableG
+		.attr("x", 0)
+		.attr("y", 0)
+		.attr("width", svgWidth)
+		.attr("height", final_height);
+	// const servingTable = d3.create("svg")
+	// 	.attr("width", svgWidth)
+	// 	.attr("height", final_height);
+
+	// servingTable.append(()=>servingTableG.node());
+	return servingTable;
 }
 
-function measureSvgContent(svg) {
+function measureSvgContent(g) {
 	// Create an off-screen container
 	const offscreenDiv = d3.select("body")
 		.append("div")
@@ -587,32 +624,21 @@ function measureSvgContent(svg) {
 		.style("visibility", "hidden");
 
 	// Append the SVG string to the container
-	document.getElementById("dummy").appendChild(svg.node());
+	// document.getElementById("dummy").appendChild(svg.node());
+	const svg = offscreenDiv.append("svg");
+	const gClone = g.node().cloneNode(true);
+	svg.node().appendChild(gClone);
 	// console.log(offscreenDiv.node());
-	const svgNode2 = offscreenDiv.select("svg").node();
+	// const svgNode2 = offscreenDiv.select("svg").node();
 	// console.log(svgNode2);
 
 	// Measure dimensions
-	const bbox = svgNode2.getBBox();
+	const bbox = svg.node().getBBox();
 
 	// Clean up
 	offscreenDiv.remove();
 
 	return bbox;
-}
-
-function wrapSvgContentInGroup(svg) {
-	// Select all children of the SVG
-	const children = svg.node().innerHTML;
-
-	svg.node().innerHTML = "";
-	// Append a new <g> to the SVG
-	const group = svg.append("g");
-
-	// Move all existing children into the <g>
-	group.node().innerHTML = children;
-
-	return group; // Return the newly created group
 }
 
 // Helper function to parse the transform string
@@ -625,6 +651,32 @@ function parseTransform(transform) {
 		y: translateMatch && translateMatch[2] ? parseFloat(translateMatch[2]) : 0,
 		k: scaleMatch ? parseFloat(scaleMatch[1]) : 1,
 	};
+}
+
+const infoPanelPrototype = {
+	initializePanel(element) {
+		this.element = element; // A DOM element for the panel
+	},
+
+	renderInfo(nodeInfo) {
+		console.log(nodeInfo);
+		this.element.innerHTML = "";
+		const element = d3.select(this.element)
+		element.append('h2').html(nodeInfo.data.properties.simpleName);
+		const ul = element.append("ul");
+		for (let key in nodeInfo.data.properties) {
+			const li = ul.append("li");
+			li.append('p').append('b').text(key);
+			li.append('p').text(nodeInfo.data.properties[key]);
+		}
+		// this.element.textContent = `Node ID: ${nodeInfo.data.id}, Data: ${JSON.stringify(nodeInfo.data.properties)}`;
+	}
+};
+
+function createInfoPanel(element) {
+	const panel = Object.create(infoPanelPrototype);
+	panel.initializePanel(element);
+	return panel;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -650,32 +702,36 @@ document.addEventListener('DOMContentLoaded', () => {
 				chartContainer.innerHTML = "";
 				const context = {
 					layers: [null, 'Presentation Layer', 'Service Layer', 'Domain Layer', 'Data Source Layer'],
-					graph: jsonData
+					graph: jsonData,
+					infoPanel: createInfoPanel(document.getElementById("info-panel"))
 				};
 				const packages = context.graph.elements.nodes.filter(node => node.data.labels.includes("Container") && !node.data.labels.includes("Structure"));
 				const getBubbleTeaData = getBubbleTeaDataWithContext(context);
 				const drawServingTable = drawServingTableWithContext(context);
 
-				const svg = drawServingTable(packages.map(getBubbleTeaData));
+				const servingTable = drawServingTable(packages.map(getBubbleTeaData));
 
 				// packages.forEach(pkgNode => {
 				// 	const bubbleTeaData = getBubbleTeaData(pkgNode);
 				// 	const svgNode = drawBubbleTea(bubbleTeaData);
 
-				if (svg) {
+				if (servingTable) {
+
 					const divWidth = chartContainer.clientWidth;
 					const divHeight = chartContainer.clientHeight;
-					const svgWidth = svg.attr("width");
-					// const svgHeight = svg.attr("height");
+					const g = servingTable.select("g");
+					const svgWidth = g.attr("width");
+					console.log("width", svgWidth);
 					const scale = divWidth/svgWidth * 0.6;
 
-					const g = wrapSvgContentInGroup(svg);
 					g.attr("transform", `translate(${divWidth*0.2}, 12) scale(${scale})`);
+
+					console.log("g", g);
 
 					let previousTransform = d3.zoomIdentity; // Initial state (identity transform)
 
 
-					svg
+					servingTable
 						.attr("width", divWidth)
 						.attr("height", divHeight)
 						.call(
@@ -704,15 +760,26 @@ document.addEventListener('DOMContentLoaded', () => {
 							})
 						);
 
+					console.log(4, servingTable.select(".shine"));
+
 					window.addEventListener('resize', () => {
 						const newWidth = chartContainer.clientWidth;
 						const newHeight = chartContainer.clientHeight;
 
-						svg.attr("width", newWidth)
+						servingTable.attr("width", newWidth)
 							.attr("height", newHeight);
 					});
 
-					chartContainer.appendChild(svg.node());
+					chartContainer.appendChild(servingTable.node());
+
+					console.log(d3.selectAll(".shine"));
+
+					d3.selectAll(".bubble, .tea").on("click", (event, d) => {
+							event.stopPropagation(); // Prevent interference from parent listeners
+							// console.log("bubble hovered", d);
+							// const clasz = context.graph.elements.nodes
+							d.hoverSignal.emit(d);
+					});
 				}
 				// });
 			} else {

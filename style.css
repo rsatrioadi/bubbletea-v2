@@ -41,7 +41,7 @@ h1 {
 h2 {
 	font-size: 1em;
 	font-weight: bold;
-	text-align: center;
+	/* text-align: center; */
 	margin-top: 3px;
 	margin-bottom: 9px;
 }
@@ -245,4 +245,8 @@ ul.tabs {
 	border-bottom-left-radius: inherit;
 	border-bottom-right-radius: inherit;
 	display: block;
+}
+
+.menu ul {
+	padding-left: 20px;
 }
