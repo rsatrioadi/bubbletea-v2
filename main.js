@@ -125,10 +125,10 @@ const drawBubbleWithContext = (context) => (data) => {
 		.style("pointer-events", "all")
 		.datum(clasz);
 
-	const halo = bubble.append("circle")
+	const rsColor = "roleStereotype" in clasz.data.properties ? `hsl(${context.roleStereotypeHues[clasz.data.properties["roleStereotype"]]}, 40%, 60%)` : "hsl(0, 0%, 60%)";
+	const rs = bubble.append("circle")
 		.attr("r", radius + 5 / 2)
-		.attr("fill-opacity", 0.3)
-		.attr("fill", "black");
+		.attr("fill", rsColor);
 
 	if (bubbleData.length === 0) {
 		bubble.append("circle")
@@ -280,9 +280,97 @@ const calculateLayoutDimensions = (positions, bubbleRadius, padding) => {
 	return { layoutWidth: maxX, layoutHeight: maxY };
 };
 
+const createShadow = (svg) => {
+	const defs = svg.select("defs");
+	const filter = defs.append("filter")
+		.attr("id", "dropShadow")
+		.attr("x", "-50%")
+		.attr("y", "-50%")
+		.attr("width", "200%")
+		.attr("height", "200%");
+
+	// Create the shadow blur
+	filter.append("feGaussianBlur")
+		.attr("in", "SourceAlpha")
+		.attr("stdDeviation", 32) // Soft blur for the shadow
+		.attr("result", "blur");
+
+	// Offset the shadow
+	filter.append("feOffset")
+		.attr("in", "blur")
+		.attr("dx", 0) // Horizontal offset
+		.attr("dy", 16) // Vertical offset
+		.attr("result", "offsetBlur");
+
+	// Add a slight gradient to the shadow color
+	filter.append("feFlood")
+		.attr("flood-color", "rgba(0, 0, 0, 0.25)") // Subtle black with opacity
+		.attr("result", "shadowColor");
+
+	filter.append("feComposite")
+		.attr("in", "shadowColor")
+		.attr("in2", "offsetBlur")
+		.attr("operator", "in")
+		.attr("result", "coloredShadow");
+
+	// Merge the shadow with the original graphic
+	filter.append("feMerge")
+		.selectAll("feMergeNode")
+		.data(["coloredShadow", "SourceGraphic"])
+		.enter()
+		.append("feMergeNode")
+		.attr("in", d => d);
+
+};
+
+const createHighlighter = (svg) => {
+	const defs = svg.select("defs");
+	const filter = defs.append("filter")
+		.attr("id", "highlight")
+		.attr("x", "-50%")
+		.attr("y", "-50%")
+		.attr("width", "200%")
+		.attr("height", "200%");
+
+	// Create a morphology-based outline (halo)
+	filter.append("feMorphology")
+		.attr("in", "SourceGraphic")
+		.attr("operator", "dilate")
+		.attr("radius", 5)
+		.attr("result", "expanded");
+
+	// Add a blur to the expanded region
+	filter.append("feGaussianBlur")
+		.attr("in", "expanded")
+		.attr("stdDeviation", 2) // Adjust for more or less blur
+		.attr("result", "blurredHalo");
+
+	// Color the halo
+	filter.append("feFlood")
+		.attr("flood-color", "#4B9AFF")
+		.attr("flood-opacity", 1)
+		.attr("result", "haloColor");
+
+	// Combine the halo color with the blurred outline
+	filter.append("feComposite")
+		.attr("in", "haloColor")
+		.attr("in2", "blurredHalo")
+		.attr("operator", "in")
+		.attr("result", "halo");
+
+	// Merge the halo and the original graphic
+	filter.append("feMerge")
+		.selectAll("feMergeNode")
+		.data(["halo", "SourceGraphic"])
+		.enter()
+		.append("feMergeNode")
+		.attr("in", d => d);
+
+};
+
 // Helper function to create SVG gradients
 const createGradient = (svg) => {
-	const defs = svg.append("svg:defs");
+	const defs = svg.select("defs");
 	const grad = defs
 		.append("svg:radialGradient")
 		.attr("gradientUnits", "objectBoundingBox")
@@ -349,9 +437,6 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 	// Create SVG container
 	// const svg = d3.create("svg");
 	const g = d3.create("svg:g");
-
-	// Create gradient
-	createGradient(g);
 
 	// Draw layout container with calculated dimensions
 	const my_hue = average(dominant.map(stringToHue));
@@ -431,6 +516,14 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 		.attr("x", 0)
 		.attr("y", 0);
 		// .attr("width", tableWidth);
+
+
+	servingTableG.append("defs");
+	// Create gradient
+	createShadow(servingTableG);
+	createGradient(servingTableG);
+	createHighlighter(servingTableG);
+
 
 	let grey_area = null;
 	let grey_height = 0;
@@ -606,7 +699,8 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 		.attr("x", 0)
 		.attr("y", 0)
 		.attr("width", svgWidth)
-		.attr("height", final_height);
+		.attr("height", final_height)
+		.attr("filter", "url(#dropShadow)");
 	// const servingTable = d3.create("svg")
 	// 	.attr("width", svgWidth)
 	// 	.attr("height", final_height);
@@ -665,11 +759,10 @@ const infoPanelPrototype = {
 		element.append('h2').html(nodeInfo.data.properties.simpleName);
 		const ul = element.append("ul");
 		for (let key in nodeInfo.data.properties) {
-			const li = ul.append("li");
-			li.append('p').append('b').text(key);
-			li.append('p').text(nodeInfo.data.properties[key]);
+			const li = ul.append("li").attr("class", "info");
+			li.append('h3').attr("class", "info").text(key);
+			li.append('div').attr("class", "info").html(nodeInfo.data.properties[key]);
 		}
-		// this.element.textContent = `Node ID: ${nodeInfo.data.id}, Data: ${JSON.stringify(nodeInfo.data.properties)}`;
 	}
 };
 
@@ -703,7 +796,18 @@ document.addEventListener('DOMContentLoaded', () => {
 				const context = {
 					layers: [null, 'Presentation Layer', 'Service Layer', 'Domain Layer', 'Data Source Layer'],
 					graph: jsonData,
-					infoPanel: createInfoPanel(document.getElementById("info-panel"))
+					infoPanel: createInfoPanel(document.getElementById("info-panel")),
+					roleStereotypeHues: {
+						"Controller": 294,
+						"Coordinator": 115,
+						"Information Holder": 359,
+						"Interfacer": 35,
+						"User Interfacer": 35,
+						"Internal Interfacer": 35,
+						"External Interfacer": 35,
+						"Service Provider": 216,
+						"Structurer": 321
+					}
 				};
 				const packages = context.graph.elements.nodes.filter(node => node.data.labels.includes("Container") && !node.data.labels.includes("Structure"));
 				const getBubbleTeaData = getBubbleTeaDataWithContext(context);
@@ -718,7 +822,7 @@ document.addEventListener('DOMContentLoaded', () => {
 				if (servingTable) {
 
 					const divWidth = chartContainer.clientWidth;
-					const divHeight = chartContainer.clientHeight;
+					const divHeight = chartContainer.clientHeight * 0.997;
 					const g = servingTable.select("g");
 					const svgWidth = g.attr("width");
 					console.log("width", svgWidth);
@@ -774,11 +878,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
 					console.log(d3.selectAll(".shine"));
 
-					d3.selectAll(".bubble, .tea").on("click", (event, d) => {
+					let lastSelection = null;
+
+					d3.selectAll(".bubble, .tea").on("click", function(event, d) {
 							event.stopPropagation(); // Prevent interference from parent listeners
 							// console.log("bubble hovered", d);
 							// const clasz = context.graph.elements.nodes
 							d.hoverSignal.emit(d);
+							if (lastSelection) lastSelection.attr("filter", null);
+							d3.select(this).attr("filter", "url(#highlight)");
+							lastSelection = d3.select(this);
 					});
 				}
 				// });

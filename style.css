@@ -7,6 +7,29 @@ body {
 #file-selector {
 	display: none;
 }
+.menu ul {
+	list-style-type: none;
+	padding: 0;
+}
+
+.menu ul li.info {
+	border-radius: 4px;
+	border: 1px solid grey;
+	margin-bottom: 8px;
+}
+
+.menu ul li h3.info {
+	font-size: 1em;
+	padding: 4px;
+	margin: 0;
+	border-bottom: 1px solid grey;
+}
+
+.menu ul li div.info {
+	font-size: 1em;
+	padding: 4px;
+	margin-bottom: 0;
+}
 
 #sidebar {
 	position: fixed;
@@ -245,8 +268,4 @@ ul.tabs {
 	border-bottom-left-radius: inherit;
 	border-bottom-right-radius: inherit;
 	display: block;
-}
-
-.menu ul {
-	padding-left: 20px;
 }

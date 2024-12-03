@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<title>Hierarchical SVG with D3</title>
+	<script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+
+<body>
+	<script>
+		// Function to draw a single circle (C) inside a group (<g>)
+		function drawC(circleRadius, position) {
+			const { x, y } = position;
+
+			// Create a group for the circle
+			const cGroup = d3.create('svg:g');
+
+			// Add a circle to the group
+			cGroup
+				.append('circle')
+				.attr('cx', x)
+				.attr('cy', y)
+				.attr('r', circleRadius)
+				.attr('fill', 'steelblue')
+				.attr('stroke', 'black');
+
+			return cGroup;
+		}
+
+		// Function to draw a single rectangle (B) containing multiple circles
+		function drawB(numCircles, circleRadius, boundingRect) {
+			const { x, y, width, height } = boundingRect;
+
+			// Create a group for this rectangle
+			const bGroup = d3.create('svg:g');
+
+			// Add a rectangle to the group
+			bGroup
+				.append('rect')
+				.attr('x', x)
+				.attr('y', y)
+				.attr('width', width)
+				.attr('height', height)
+				.attr('fill', 'lightgray')
+				.attr('stroke', 'black');
+
+			// Generate positions for the circles
+			for (let i = 0; i < numCircles; i++) {
+				const circleX = Math.random() * (width - 2 * circleRadius) + x + circleRadius;
+				const circleY = Math.random() * (height - 2 * circleRadius) + y + circleRadius;
+
+				// Call drawC to create a single circle group and append it to the B group
+				const cGroup = drawC(circleRadius, { x: circleX, y: circleY });
+				bGroup.node().appendChild(cGroup.node());
+			}
+
+			return bGroup;
+		}
+
+		// Function to draw the top-level SVG (A) containing multiple rectangles
+		function drawA(numBs, numCircles, bWidth, bHeight, circleRadius) {
+			const svgWidth = 800;
+			const svgHeight = 600;
+
+			// Create the SVG element
+			const svg = d3.create('svg')
+				.attr('width', svgWidth)
+				.attr('height', svgHeight);
+
+			// Add a background rectangle
+			svg
+				.append('rect')
+				.attr('width', svgWidth)
+				.attr('height', svgHeight)
+				.attr('fill', 'white')
+				.attr('stroke', 'black');
+
+			// Calculate positions for the B groups
+			const cols = Math.ceil(Math.sqrt(numBs)); // Arrange in a grid
+			const rows = Math.ceil(numBs / cols);
+			const xSpacing = svgWidth / cols;
+			const ySpacing = svgHeight / rows;
+
+			for (let i = 0; i < numBs; i++) {
+				const col = i % cols;
+				const row = Math.floor(i / cols);
+
+				const x = col * xSpacing + (xSpacing - bWidth) / 2;
+				const y = row * ySpacing + (ySpacing - bHeight) / 2;
+
+				// Call drawB to create each rectangle group
+				const bGroup = drawB(numCircles, circleRadius, { x, y, width: bWidth, height: bHeight });
+				svg.node().appendChild(bGroup.node());
+			}
+
+			return svg;
+		}
+
+		// Run the visualization
+		const svgElement = drawA(
+			6,             // Number of B groups
+			10,            // Number of circles per B
+			150,           // Width of each B rectangle
+			100,           // Height of each B rectangle
+			10             // Radius of each circle
+		);
+
+		// Append the SVG to the document body
+		document.body.appendChild(svgElement.node());
+	</script>
+</body>
+
+</html>
