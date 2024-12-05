@@ -1,69 +1,38 @@
 import { stringToHue, arraysEqual, average, sum, max } from './utils.js';
 import { createSignal } from './signal.js';
+import { createGraph, lift } from './graph.js';
 
-function nodeName(node) {
-	return node.data.properties.simpleName;
-}
-
-function nodeId(node) {
-	return node.data.id;
-}
-
-const classesWithGraph = (graph) => (pkg) => {
-	// Helper function to get target node IDs
-	const getTargetIds = (edges) =>
-		edges
-			.filter(edge => edge.data.source === pkg.data.id && edge.data.label === "contains")
-			.map(edge => edge.data.target);
-
-	// Helper function to check if node is relevant
-	const isRelevantNode = (targetIdsSet) => (node) => targetIdsSet.has(node.data.id) && node.data.labels.includes("Structure");
-
-	// Get the target node IDs as a Set for O(1) lookup
-	const targetIdsSet = new Set(getTargetIds(graph.elements.edges));
-
-	// Return the filtered nodes that are both in targetIds and have "Structure" in their labels
-	return graph.elements.nodes.filter((node) => isRelevantNode(targetIdsSet)(node));
+const classDepsOf = (clasz) => {
+	return {
+		outgoing: clasz.targets("calls"),
+		incoming: clasz.sources("calls")
+	}
 };
 
-const methodsWithGraph = (graph) => (clasz) => {
-	// Helper function to get target node IDs
-	const getTargetIds = (edges) =>
-		edges
-			.filter(edge => edge.data.source === clasz.data.id && edge.data.label === "hasScript")
-			.map(edge => edge.data.target);
-
-	// Helper function to check if a node is a target
-	const isTargetNode = (node, targetIdsSet) => targetIdsSet.has(node.data.id);
-
-	// Get the target node IDs as a Set for O(1) lookup
-	const targetIdsSet = new Set(getTargetIds(graph.elements.edges));
-
-	// Return the filtered nodes that match the target node IDs
-	return graph.elements.nodes.filter((node) => isTargetNode(node, targetIdsSet));
+const classesOf = (pkg) => {
+	return pkg.targets("contains").filter((n)=>n.hasLabel("Structure"));
 };
 
-const layerWithGraph = (graph) => (method) => {
-	// In a later version, the implementation may change and involve graph, so let the parameter there.
-	return method.data.properties.layer || "Undefined";
+const methodsOf = (clasz) => {
+	return clasz.targets("hasScript");
+};
+
+const layerOf = (method) => {
+	return method.property("layer") || "Undefined";
 }
 
 const getBubbleDataWithContext = (context) => (clasz) => {
 
-	const methods = methodsWithGraph(context.graph);
-	const layer = layerWithGraph(context.graph);
-
-	const methodList = methods(clasz);
+	const methodList = methodsOf(clasz);
 
 	// Use reduce to accumulate layer counts without mutating state
 	const layerCounts = methodList.reduce((counts, method) => {
-		const layerType = layer(method);
+		const layerType = layerOf(method);
 		return {
 			...counts,
 			[layerType]: (counts[layerType] || 0) + 1
 		};
 	}, {});
-	// console.log(clasz.data.id, layerCounts);
 
 	// Transform layerCounts into the desired array structure
 	const bubbleData = Object.entries(layerCounts).map(([layerType, count]) => ({
@@ -72,7 +41,7 @@ const getBubbleDataWithContext = (context) => (clasz) => {
 		valid: context.layers.includes(layerType),
 		hue: stringToHue(layerType)
 	}));
-	
+
 	return { class: clasz, bubbleData };
 };
 
@@ -122,10 +91,11 @@ const drawBubbleWithContext = (context) => (data) => {
 
 	const bubble = d3.create("svg:g") // Create a group for easier composition
 		.attr("class", "bubble")
+		.attr("id", clasz.id())
 		.style("pointer-events", "all")
 		.datum(clasz);
 
-	const rsColor = "roleStereotype" in clasz.data.properties ? `hsl(${context.roleStereotypeHues[clasz.data.properties["roleStereotype"]]}, 40%, 60%)` : "hsl(0, 0%, 60%)";
+	const rsColor = "roleStereotype" in clasz.data.properties ? `hsl(${context.roleStereotypeHues[clasz.data.properties["roleStereotype"]]}, 100%, 70%)` : "hsl(0, 0%, 60%)";
 	const rs = bubble.append("circle")
 		.attr("r", radius + 5 / 2)
 		.attr("fill", rsColor);
@@ -154,24 +124,8 @@ const drawBubbleWithContext = (context) => (data) => {
 		.attr("r", radius)
 		.attr("fill", "url(#gradient)");
 
-	// halo.on("mouseover", (event) => {
-	// 	// event.stopPropagation(); // Prevent interference from parent listeners
-	// 	console.log("halo hovered");
-	// 	clasz.hoverSignal.emit(clasz.data);
-	// });
-
-	// circle.on("mouseover", (event) => {
-	// 	// event.stopPropagation(); // Prevent interference from parent listeners
-	// 	console.log("shine hovered");
-	// 	clasz.hoverSignal.emit(clasz.data);
-	// });
-
-	// console.log(circle.datum());
-
 	return bubble;
 };
-
-
 
 const layerCompositionComparatorWithContext = (context) => {
 	const { layers } = context;
@@ -215,11 +169,10 @@ const layerCompositionComparatorWithContext = (context) => {
 
 const getBubbleTeaDataWithContext = (context) => (pkg) => {
 
-	const classes = classesWithGraph(context.graph);
 	const getBubbleData = getBubbleDataWithContext(context);
 	const dominatingLayers = dominatingLayersWithContext(context);
 
-	const claszList = classes(pkg);  // Get all clasz objects
+	const claszList = classesOf(pkg);  // Get all clasz objects
 
 	const data = claszList.map((clasz) => getBubbleData(clasz));
 
@@ -347,7 +300,7 @@ const createHighlighter = (svg) => {
 
 	// Color the halo
 	filter.append("feFlood")
-		.attr("flood-color", "#4B9AFF")
+		.attr("flood-color", "hsl(30, 100%, 50%)")
 		.attr("flood-opacity", 1)
 		.attr("result", "haloColor");
 
@@ -401,7 +354,8 @@ const drawLayoutContainer = (width, height, bubbleRadius, padding, fill, stroke)
 		.attr("width", width - padding)
 		.attr("height", bubbleRadius)
 		.attr("fill", stroke)
-		.attr("stroke", stroke);
+		.attr("stroke", stroke)
+		.attr("stroke-width", "2pt");
 
 	g.append("path")
 		.attr("d", `
@@ -414,7 +368,8 @@ const drawLayoutContainer = (width, height, bubbleRadius, padding, fill, stroke)
             V${padding / 2 + bubbleRadius} Z
         `)
 		.attr("fill", fill)
-		.attr("stroke", stroke);
+		.attr("stroke", stroke)
+		.attr("stroke-width", "2pt");
 	return g;
 };
 
@@ -426,7 +381,7 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 
 	if (data.length === 0) return null;
 
-	const pkgName = nodeName(pkg);
+	const pkgName = pkg.property("simpleName");
 	const bubbleRadius = 20;
 	const padding = 10;
 
@@ -440,11 +395,12 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 
 	// Draw layout container with calculated dimensions
 	const my_hue = average(dominant.map(stringToHue));
-	const fill = dominant.length > 0 ? `hsl(${my_hue}, 60%, 80%)` : "hsl(0, 0%, 80%)";
-	const stroke = dominant.length > 0 ? `hsl(${my_hue}, 90%, 40%)` : "hsl(0, 0%, 40%)";
+	const fill = "hsl(24, 46%, 86%)";//dominant.length > 0 ? `hsl(${my_hue}, 60%, 80%)` : "hsl(0, 0%, 80%)";
+	const stroke = dominant.length > 0 ? `hsl(${my_hue}, 50%, 30%)` : "hsl(0, 0%, 30%)";
 	const pkgG = drawLayoutContainer(layoutWidth, layoutHeight, bubbleRadius, padding, fill, stroke);
 	pkgG
 		.attr("class", "tea")
+		.attr("id", pkg.id())
 		.style("pointer-events", "all")
 		.datum(pkg);
 	g.append(() => pkgG.node());
@@ -454,7 +410,6 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 		.forEach((d, index) => {
 			const [xPos, yPos] = positions[index];
 			const bubble = drawBubble(d);
-			// console.log("drawBubbleTeaWithContext", bubble);
 			g.append(() => bubble.node());
 			d3.select(bubble.node()).attr("transform", `translate(${xPos}, ${yPos})`);
 		});
@@ -466,6 +421,14 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 		.attr("text-anchor", "middle")
 		.style("font-size", "20px")
 		.text(pkgName);
+
+	const pkgLayer = dominant.length == 0 ? "Cross-cutting" : dominant.join(", ");
+	pkg.property("layer", pkgLayer);
+	data.forEach(({class: clasz, bubbleData}) => {
+		const clsDominant = dominatingLayersWithContext(context)(bubbleData);
+		const clsLayer = clsDominant.length == 0 ? "Cross-cutting" : clsDominant.join(", ");
+		clasz.property("layer", clsLayer);
+	});
 
 	pkg.hoverSignal = createSignal();
 	pkg.hoverSignal.connect(context.infoPanel.renderInfo.bind(context.infoPanel));
@@ -496,11 +459,11 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 	const layerOrder = generateLayerOrder(context.layers.slice(1));
 	
 	const layers = {};
-	layerOrder.forEach(layer => (layers[layer.join(",")] = []));
+	layerOrder.forEach(layer => (layers[layer.join(", ")] = []));
 	
 	// Categorize bubbleTeaData objects into layers based on `dominant`
 	bubbleTeaDataArray.forEach(bubbleTeaData => {
-		const key = bubbleTeaData.dominant.sort((a,b)=>context.layers.indexOf(a)-context.layers.indexOf(b)).join(",");
+		const key = bubbleTeaData.dominant.sort((a,b)=>context.layers.indexOf(a)-context.layers.indexOf(b)).join(", ");
 		if (key in layers) layers[key].push(bubbleTeaData);
 	});
 
@@ -518,11 +481,11 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 		// .attr("width", tableWidth);
 
 
-	servingTableG.append("defs");
+	servingTable.append("defs");
 	// Create gradient
-	createShadow(servingTableG);
-	createGradient(servingTableG);
-	createHighlighter(servingTableG);
+	createShadow(servingTable);
+	createGradient(servingTable);
+	createHighlighter(servingTable);
 
 
 	let grey_area = null;
@@ -534,7 +497,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 
 		if (items.length > 0) {
 
-			const layer_group = servingTableG.append("g")
+			const layer_group = servingTableG.insert("g", ":first-child")
 				.attr("x", 0)
 				.attr("y", 0);
 
@@ -544,11 +507,6 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 			// Render each item in this layer
 			const bboxes = [];
 			const groups = items.map(drawBubbleTea).filter(e => e != null).map(tea => {
-
-				// const pkg_group = layer_group
-				// 	.append("g");
-				// pkg_group.html(innerSvg.node().innerHTML);
-				// console.log(innerSvg.node());
 				const bbox = measureSvgContent(tea);
 				bboxes.push(bbox);
 				return tea;
@@ -556,7 +514,6 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 
 			if (bboxes.length > 0) {
 				const layerWidth = max(bboxes.map(b => b.width)) + 2 * bubbleSpacing;
-				// console.log(layerName, layerWidth);
 
 				let yOffset = 2 * bubbleSpacing;
 
@@ -564,14 +521,11 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 					.attr("transform", `translate(${tableWidth - layerWidth}, 0)`);
 
 				groups.forEach((g, i) => {
-					layer_group.node().append(g.node());
-					console.log("drawServingTableWithContext", g);
+					servingTableG.node().append(g.node());
 					const bbox = bboxes[i];
-					g.attr("transform", `translate(${(layerWidth - bbox.width)/2}, ${yOffset})`);
+					g.attr("transform", `translate(${(tableWidth - layerWidth) + (layerWidth - bbox.width)/2}, ${yOffset})`);
 					yOffset += bbox.height + bubbleSpacing;
 				});
-
-				// Add layer title
 
 				layer_group.insert("text", ":first-child")
 					.attr("x", 10)
@@ -596,8 +550,6 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 
 				tableWidth -= layerWidth;
 				grey_height = yOffset;
-
-				// servingTableG.append(() => layer_group.node());
 			}
 		}
 	}
@@ -606,11 +558,11 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 	Object.entries(layers).filter(([layerName, _])=>layerName).forEach(([layerName, items]) => {
 		if (items.length === 0) return;
 
-		const layer_group = servingTableG.append("g")
+		const layer_group = servingTableG.insert("g", ":first-child")
 			.attr("x", 0)
 			.attr("y", 0);
 
-		const layerNames = layerName ? layerName.split(",") : [];
+		const layerNames = layerName ? layerName.split(", ") : [];
 		const my_hue = average(layerNames.map(stringToHue));
 		const fill = layerNames.length > 0 ? `hsl(${my_hue}, 50%, 90%)` : "hsl(0, 0%, 90%)";
 		const stroke = layerNames.length > 0 ? `hsl(${my_hue}, 90%, 40%)` : "hsl(0, 0%, 40%)";
@@ -643,25 +595,24 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 		});
 
 		const layerHeight = max(bboxes.map(b => b.height))+2*bubbleSpacing;
-		// console.log(layerName, layerHeight);
 
 		let xOffset = bubbleSpacing;
 		let yOffset = layerHeight;
+		const layerOffset = totalHeight;
 
 		layer_group
 			.attr("transform", `translate(0, ${totalHeight})`);
 		totalHeight += layerHeight + bubbleSpacing;
 
 		groups.forEach((g, i) => {
-			layer_group.node().append(g.node());
-			console.log("drawServingTableWithContext", g);
+			servingTableG.node().append(g.node());
 			const bbox = bboxes[i];
 			if (xOffset + bbox.width + bubbleSpacing > tableWidth) {
 				xOffset = bubbleSpacing;
 				yOffset += layerHeight;
 				totalHeight += layerHeight;
 			}
-			g.attr("transform", `translate(${xOffset - bbox.x}, ${yOffset - bbox.height})`);
+			g.attr("transform", `translate(${xOffset - bbox.x}, ${layerOffset + yOffset - bbox.height})`);
 			xOffset += bbox.width + bubbleSpacing;
 		});
 
@@ -671,16 +622,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 			.attr("width", tableWidth)
 			.attr("height", yOffset + bubbleSpacing)
 			.attr("fill", fill);
-
-		console.log("layer_group", layer_group);
-
-		// servingTableG.append(() => layer_group.node());
-
-		console.log("layer_group after append", servingTableG);
-		console.log(1, layer_group.select(".shine"));
-		console.log(2, servingTableG.select(".shine"));
 	});
-	console.log(3, servingTableG.select(".shine"));
 	
 	const final_height = max([grey_height, totalHeight]);
 
@@ -693,19 +635,13 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 
 	if (grey_area) grey_area.attr("height", final_height);
 
-	console.log("before return", servingTableG);
-
 	servingTableG
 		.attr("x", 0)
 		.attr("y", 0)
 		.attr("width", svgWidth)
 		.attr("height", final_height)
 		.attr("filter", "url(#dropShadow)");
-	// const servingTable = d3.create("svg")
-	// 	.attr("width", svgWidth)
-	// 	.attr("height", final_height);
 
-	// servingTable.append(()=>servingTableG.node());
 	return servingTable;
 }
 
@@ -718,13 +654,9 @@ function measureSvgContent(g) {
 		.style("visibility", "hidden");
 
 	// Append the SVG string to the container
-	// document.getElementById("dummy").appendChild(svg.node());
 	const svg = offscreenDiv.append("svg");
 	const gClone = g.node().cloneNode(true);
 	svg.node().appendChild(gClone);
-	// console.log(offscreenDiv.node());
-	// const svgNode2 = offscreenDiv.select("svg").node();
-	// console.log(svgNode2);
 
 	// Measure dimensions
 	const bbox = svg.node().getBBox();
@@ -735,49 +667,63 @@ function measureSvgContent(g) {
 	return bbox;
 }
 
-// Helper function to parse the transform string
-function parseTransform(transform) {
-	const translateMatch = /translate\(([^,]+),?([^,]*)\)/.exec(transform);
-	const scaleMatch = /scale\(([^)]+)\)/.exec(transform);
-
-	return {
-		x: translateMatch ? parseFloat(translateMatch[1]) : 0,
-		y: translateMatch && translateMatch[2] ? parseFloat(translateMatch[2]) : 0,
-		k: scaleMatch ? parseFloat(scaleMatch[1]) : 1,
-	};
-}
-
 const infoPanelPrototype = {
-	initializePanel(element) {
-		this.element = element; // A DOM element for the panel
+	initializePanel(element,context) {
+		this.element = element;
+		this.context = context;
 	},
 
 	renderInfo(nodeInfo) {
-		console.log(nodeInfo);
 		this.element.innerHTML = "";
 		const element = d3.select(this.element)
-		element.append('h2').html(nodeInfo.data.properties.simpleName);
+		element.append('h2')
+			.html(`${nodeInfo.data.properties.kind}: ${nodeInfo.data.properties.simpleName.replace(/([A-Z])/g, '\u200B$1') }`);
 		const ul = element.append("ul");
-		for (let key in nodeInfo.data.properties) {
+
+		if ("qualifiedName" in nodeInfo.data.properties) {
 			const li = ul.append("li").attr("class", "info");
-			li.append('h3').attr("class", "info").text(key);
-			li.append('div').attr("class", "info").html(nodeInfo.data.properties[key]);
+			li.append('h3')
+				.attr("class", "info")
+				.text("qualifiedName");
+			const prop = li.append('div')
+				.attr("class", "info")
+				.text(nodeInfo.data.properties["qualifiedName"]
+					.replace(/\./g, '.\u200B')
+					.replace(/([A-Z])/g, '\u200B$1'));
+		}
+
+		const keys = ["description", "docComment", "keywords", "layer", "roleStereotype", "dependencyProfile"];
+		for (let key of keys) {
+			if (key in nodeInfo.data.properties) {
+				const li = ul.append("li").attr("class", "info");
+				li.append('h3')
+					.attr("class", "info")
+					.text(key);
+				const prop = li.append('div')
+					.attr("class", "info")
+					.html(nodeInfo.data.properties[key]);
+
+				const hueKey = key + "Hues";
+				if ((hueKey) in this.context && nodeInfo.data.properties[key] in this.context[hueKey]) {
+					const hue = this.context[hueKey][nodeInfo.data.properties[key]];
+					prop.attr("style", `background-color: hsl(${hue}, 100%, 95%)`)
+				}
+			}
 		}
 	}
 };
 
-function createInfoPanel(element) {
+const createInfoPanel = (context)=>(element)=> {
 	const panel = Object.create(infoPanelPrototype);
-	panel.initializePanel(element);
+	panel.initializePanel(element, context);
 	return panel;
-}
+};
 
 document.addEventListener('DOMContentLoaded', () => {
 	function handleFileUpload(event) {
-		const file = event.target.files[0]; // Get the file selected by the user
+		const file = event.target.files[0]; 
 
 		if (!file) {
-			// alert("Please select a JSON file.");
 			return;
 		}
 
@@ -793,31 +739,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
 				const chartContainer = document.getElementById("chart-container");
 				chartContainer.innerHTML = "";
+
+				const invokes = jsonData.elements.edges.filter((e) => e.data.label === "invokes");
+				const hasScript = jsonData.elements.edges.filter((e) => e.data.label === "hasScript");
+				const calls = lift(hasScript, invokes, "calls").filter((e)=>e.data.source !== e.data.target);
+				jsonData.elements.edges = [...jsonData.elements.edges, ...calls];
+
 				const context = {
 					layers: [null, 'Presentation Layer', 'Service Layer', 'Domain Layer', 'Data Source Layer'],
-					graph: jsonData,
-					infoPanel: createInfoPanel(document.getElementById("info-panel")),
+					graph: createGraph(jsonData),
 					roleStereotypeHues: {
 						"Controller": 294,
 						"Coordinator": 115,
-						"Information Holder": 359,
+						"Information Holder": 355,
 						"Interfacer": 35,
 						"User Interfacer": 35,
 						"Internal Interfacer": 35,
 						"External Interfacer": 35,
 						"Service Provider": 216,
 						"Structurer": 321
+					},
+					dependencyProfileHues: {
+						inbound: 120,
+						outbound: 240,
+						transit: 60,
+						hidden: 0
 					}
 				};
-				const packages = context.graph.elements.nodes.filter(node => node.data.labels.includes("Container") && !node.data.labels.includes("Structure"));
+				context.infoPanel = createInfoPanel(context)(document.getElementById("info-panel"));
+
+				const packages = context.graph.nodes(node => node.hasLabel("Container") && !node.hasLabel("Structure"));
 				const getBubbleTeaData = getBubbleTeaDataWithContext(context);
 				const drawServingTable = drawServingTableWithContext(context);
 
 				const servingTable = drawServingTable(packages.map(getBubbleTeaData));
-
-				// packages.forEach(pkgNode => {
-				// 	const bubbleTeaData = getBubbleTeaData(pkgNode);
-				// 	const svgNode = drawBubbleTea(bubbleTeaData);
 
 				if (servingTable) {
 
@@ -825,65 +780,48 @@ document.addEventListener('DOMContentLoaded', () => {
 					const divHeight = chartContainer.clientHeight * 0.997;
 					const g = servingTable.select("g");
 					const svgWidth = g.attr("width");
-					console.log("width", svgWidth);
 					const scale = divWidth/svgWidth * 0.6;
 
-					g.attr("transform", `translate(${divWidth*0.2}, 12) scale(${scale})`);
-
-					console.log("g", g);
-
-					let previousTransform = d3.zoomIdentity; // Initial state (identity transform)
-
+					const zoom = d3.zoom().on('zoom', ({ transform }) => {
+						g.attr('transform', transform);
+					});
 
 					servingTable
 						.attr("width", divWidth)
 						.attr("height", divHeight)
-						.call(
-							d3.zoom().on('zoom', ({ transform }) => {
-								// Calculate the delta
-								const delta = {
-									x: transform.x - previousTransform.x,
-									y: transform.y - previousTransform.y,
-									k: transform.k / previousTransform.k, // Scale is multiplicative
-								};
+						.call(zoom);
 
-								// Apply the delta to the existing transform of the group
-								const existing = parseTransform(g.attr('transform') || "");
+					const initialTransform = d3.zoomIdentity.translate(divWidth*0.2,12).scale(scale);
+					servingTable.call(zoom.transform, initialTransform);
 
-								const updatedTransform = {
-									x: existing.x + delta.x,
-									y: existing.y + delta.y,
-									k: existing.k * delta.k,
-								};
-
-								// Set the updated transform
-								g.attr('transform', `translate(${updatedTransform.x}, ${updatedTransform.y}) scale(${updatedTransform.k})`);
-
-								// Update the previousTransform for the next zoom event
-								previousTransform = transform;
-							})
-						);
-
-					console.log(4, servingTable.select(".shine"));
-
-					window.addEventListener('resize', () => {
-						const newWidth = chartContainer.clientWidth;
-						const newHeight = chartContainer.clientHeight;
-
-						servingTable.attr("width", newWidth)
-							.attr("height", newHeight);
+					const resetZoom = document.createElement("button");
+					resetZoom.id = "reset-zoom";
+					resetZoom.textContent = "🧭";
+					resetZoom.addEventListener("click", (event) => {
+						servingTable.call(zoom.transform, initialTransform);
 					});
 
 					chartContainer.appendChild(servingTable.node());
+					chartContainer.appendChild(resetZoom);
 
-					console.log(d3.selectAll(".shine"));
+					const resizeObserver = new ResizeObserver(entries => {
+						for (let entry of entries) {
+							if (entry.target === chartContainer) {
+								servingTable
+									.attr("width", entry.contentRect.width)
+									.attr("height", entry.contentRect.height);
+								initialTransform.x = entry.contentRect.width * 0.2;
+								initialTransform.k = entry.contentRect.width / svgWidth * 0.6;
+							}
+						}
+					});
+
+					resizeObserver.observe(chartContainer);
 
 					let lastSelection = null;
 
 					d3.selectAll(".bubble, .tea").on("click", function(event, d) {
 							event.stopPropagation(); // Prevent interference from parent listeners
-							// console.log("bubble hovered", d);
-							// const clasz = context.graph.elements.nodes
 							d.hoverSignal.emit(d);
 							if (lastSelection) lastSelection.attr("filter", null);
 							d3.select(this).attr("filter", "url(#highlight)");
@@ -896,16 +834,42 @@ document.addEventListener('DOMContentLoaded', () => {
 			}
 		};
 
-		// Read the file as a text
 		reader.readAsText(file);
 	}
 
-	// Attach the event listener to the file input
 	document.getElementById('file-selector').addEventListener('change', handleFileUpload);
 
-	// Optionally, you can trigger the file input when the button is clicked (to give the user a clearer interface)
 	document.getElementById('upload-button').addEventListener('click', () => {
-		document.getElementById('file-selector').click();  // Trigger file input click when the button is clicked
+		document.getElementById('file-selector').click(); 
 	});
 });
 
+const resizer = document.querySelector(".resizer");
+const leftPane = document.querySelector("#chart-container");
+const rightPane = document.querySelector("#sidebar");
+
+// Handle the dragging
+resizer.addEventListener("mousedown", (e) => {
+	document.body.style.cursor = "ew-resize";
+	document.body.style.userSelect = "none";
+
+	const startX = e.clientX;
+	const startSidebarWidth = rightPane.offsetWidth;
+
+	const onMouseMove = (e) => {
+		const dx = -(e.clientX - startX);
+		const newSidebarWidth = Math.min(480, Math.max(240, startSidebarWidth + dx));
+		rightPane.style.width = `${newSidebarWidth}px`;
+		leftPane.style.width = `calc(100vw - ${newSidebarWidth}px)`;
+	};
+
+	const onMouseUp = () => {
+		document.removeEventListener("mousemove", onMouseMove);
+		document.removeEventListener("mouseup", onMouseUp);
+		document.body.style.cursor = "";
+		document.body.style.userSelect = "";
+	};
+
+	document.addEventListener("mousemove", onMouseMove);
+	document.addEventListener("mouseup", onMouseUp);
+});
