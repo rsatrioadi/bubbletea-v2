@@ -48,7 +48,7 @@ const nodePrototype = {
 	},
 	sources(edgeLabel) {
 		if (!this._meta._sources || !(edgeLabel in this._meta._sources)) {
-			const source_nodes = this._meta._graph.edges(edgeLabel, (e)=> e.target().id() === this.id())
+			const source_nodes = this._meta._graph.edges(edgeLabel, (e) => e.target().id() === this.id())
 				.map((e) => e.source());
 			this._meta._sources[edgeLabel] = source_nodes;
 		}

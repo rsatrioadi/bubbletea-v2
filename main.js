@@ -9,8 +9,24 @@ const classDepsOf = (clasz) => {
 	}
 };
 
+const pkgDepsOf = (pkg) => {
+	const classDeps = classesOf(pkg).map(classDepsOf).reduce((acc, { outgoing, incoming }) => {
+		// Add outgoing to the accumulated outgoing array, avoiding duplicates
+		acc.outgoing = [...new Set([...acc.outgoing, ...outgoing.map((n) => n.property("package"))])];
+
+		// Add incoming to the accumulated incoming array, avoiding duplicates
+		acc.incoming = [...new Set([...acc.incoming, ...incoming.map((n) => n.property("package"))])];
+
+		return acc;
+	}, { outgoing: [], incoming: [] });
+
+	console.log(pkg.id(), classDeps);
+
+	return classDeps;
+};
+
 const classesOf = (pkg) => {
-	return pkg.targets("contains").filter((n)=>n.hasLabel("Structure"));
+	return pkg.targets("contains").filter((n) => n.hasLabel("Structure"));
 };
 
 const methodsOf = (clasz) => {
@@ -25,24 +41,36 @@ const getBubbleDataWithContext = (context) => (clasz) => {
 
 	const methodList = methodsOf(clasz);
 
-	// Use reduce to accumulate layer counts without mutating state
-	const layerCounts = methodList.reduce((counts, method) => {
-		const layerType = layerOf(method);
-		return {
-			...counts,
-			[layerType]: (counts[layerType] || 0) + 1
-		};
-	}, {});
+	if (methodList.length > 0) {
+		// Use reduce to accumulate layer counts without mutating state
+		const layerCounts = methodList.reduce((counts, method) => {
+			const layerType = layerOf(method);
+			return {
+				...counts,
+				[layerType]: (counts[layerType] || 0) + 1
+			};
+		}, {});
 
-	// Transform layerCounts into the desired array structure
-	const bubbleData = Object.entries(layerCounts).map(([layerType, count]) => ({
-		layer: layerType,
-		count,
-		valid: context.layers.includes(layerType),
-		hue: stringToHue(layerType)
-	}));
+		// Transform layerCounts into the desired array structure
+		const bubbleData = Object.entries(layerCounts).map(([layerType, count]) => ({
+			layer: layerType,
+			count,
+			valid: context.layers.includes(layerType),
+			hue: stringToHue(layerType)
+		}));
 
-	return { class: clasz, bubbleData };
+		return { class: clasz, bubbleData };
+	} else {
+
+		const bubbleData = [{
+			layer: "Undefined",
+			count: 1,
+			valid: false,
+			hue: 0
+		}];
+
+		return { class: clasz, bubbleData };
+	}
 };
 
 const dominatingLayersWithContext = (context) => (bubbleData) => {
@@ -75,7 +103,7 @@ const dominatingLayersWithContext = (context) => (bubbleData) => {
 	}
 
 	if (bubbleData.length === 2 || bubbleData.some(({ count }) => count * 1.5 < max1)) {
-		if (Math.abs(layers.indexOf(layer1)-layers.indexOf(layer2))<2) {
+		if (Math.abs(layers.indexOf(layer1) - layers.indexOf(layer2)) < 2) {
 			return [layer1, layer2];
 		}
 	}
@@ -116,8 +144,8 @@ const drawBubbleWithContext = (context) => (data) => {
 			.attr("fill", d => d.data.valid ? `hsl(${d.data.hue}, 90%, 40%)` : "black");
 	}
 
-	clasz.hoverSignal = createSignal();
-	clasz.hoverSignal.connect(context.infoPanel.renderInfo.bind(context.infoPanel));
+	clasz.signal = createSignal();
+	clasz.signal.connect(context.infoPanel.renderInfo.bind(context.infoPanel));
 
 	const circle = bubble.append("circle")
 		.attr("class", "shine")
@@ -140,7 +168,7 @@ const layerCompositionComparatorWithContext = (context) => {
 		) / 2;
 	};
 
-	const calculateProportion = (arr)=>(dominantLayers) => {
+	const calculateProportion = (arr) => (dominantLayers) => {
 		const total = sum(arr.map((layer) => layer.count));
 		const dominantCount = sum(
 			arr
@@ -174,6 +202,10 @@ const getBubbleTeaDataWithContext = (context) => (pkg) => {
 
 	const claszList = classesOf(pkg);  // Get all clasz objects
 
+	claszList.forEach((cls) => {
+		cls.property("package", pkg);
+	});
+
 	const data = claszList.map((clasz) => getBubbleData(clasz));
 
 	const pkgBubbleData = data.map(d => {
@@ -205,10 +237,10 @@ const getBubbleTeaDataWithContext = (context) => (pkg) => {
 	const dominant = dominatingLayers(averageCounts);
 
 	return {
-		package:pkg,
+		package: pkg,
 		dominant,
-		bubbleTeaData:averageCounts,
-		bubbleData:data
+		bubbleTeaData: averageCounts,
+		bubbleData: data
 	};
 }
 
@@ -274,6 +306,21 @@ const createShadow = (svg) => {
 		.append("feMergeNode")
 		.attr("in", d => d);
 
+};
+
+const createArrowHead = (svg) => {
+	const defs = svg.select("defs");
+	defs.append('marker')
+		.attr('id', 'arrow')
+		.attr('viewBox', '0 0 10 10')
+		.attr('refX', 5)
+		.attr('refY', 5)
+		.attr('markerWidth', 6)
+		.attr('markerHeight', 6)
+		.attr('orient', 'auto-start-reverse')
+		.append('path')
+		.attr('d', 'M 0 0 L 10 5 L 0 10 Z')
+		.attr('fill', 'black');
 };
 
 const createHighlighter = (svg) => {
@@ -398,7 +445,7 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 	const fill = "hsl(24, 46%, 86%)";//dominant.length > 0 ? `hsl(${my_hue}, 60%, 80%)` : "hsl(0, 0%, 80%)";
 	const stroke = dominant.length > 0 ? `hsl(${my_hue}, 50%, 30%)` : "hsl(0, 0%, 30%)";
 	const pkgG = drawLayoutContainer(layoutWidth, layoutHeight, bubbleRadius, padding, fill, stroke);
-	pkgG
+	g
 		.attr("class", "tea")
 		.attr("id", pkg.id())
 		.style("pointer-events", "all")
@@ -424,14 +471,15 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 
 	const pkgLayer = dominant.length == 0 ? "Cross-cutting" : dominant.join(", ");
 	pkg.property("layer", pkgLayer);
-	data.forEach(({class: clasz, bubbleData}) => {
+	data.forEach(({ class: clasz, bubbleData }) => {
 		const clsDominant = dominatingLayersWithContext(context)(bubbleData);
 		const clsLayer = clsDominant.length == 0 ? "Cross-cutting" : clsDominant.join(", ");
 		clasz.property("layer", clsLayer);
 	});
 
-	pkg.hoverSignal = createSignal();
-	pkg.hoverSignal.connect(context.infoPanel.renderInfo.bind(context.infoPanel));
+	pkg.signal = createSignal();
+	pkg.signal.connect(context.infoPanel.renderInfo.bind(context.infoPanel));
+	pkg.signal.connect(context.arrowRenderer);
 
 	return g;
 };
@@ -457,13 +505,13 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 	}
 
 	const layerOrder = generateLayerOrder(context.layers.slice(1));
-	
+
 	const layers = {};
 	layerOrder.forEach(layer => (layers[layer.join(", ")] = []));
-	
+
 	// Categorize bubbleTeaData objects into layers based on `dominant`
 	bubbleTeaDataArray.forEach(bubbleTeaData => {
-		const key = bubbleTeaData.dominant.sort((a,b)=>context.layers.indexOf(a)-context.layers.indexOf(b)).join(", ");
+		const key = bubbleTeaData.dominant.sort((a, b) => context.layers.indexOf(a) - context.layers.indexOf(b)).join(", ");
 		if (key in layers) layers[key].push(bubbleTeaData);
 	});
 
@@ -478,7 +526,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 		.append("g")
 		.attr("x", 0)
 		.attr("y", 0);
-		// .attr("width", tableWidth);
+	// .attr("width", tableWidth);
 
 
 	servingTable.append("defs");
@@ -486,7 +534,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 	createShadow(servingTable);
 	createGradient(servingTable);
 	createHighlighter(servingTable);
-
+	createArrowHead(servingTable);
 
 	let grey_area = null;
 	let grey_height = 0;
@@ -523,7 +571,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 				groups.forEach((g, i) => {
 					servingTableG.node().append(g.node());
 					const bbox = bboxes[i];
-					g.attr("transform", `translate(${(tableWidth - layerWidth) + (layerWidth - bbox.width)/2}, ${yOffset})`);
+					g.attr("transform", `translate(${(tableWidth - layerWidth) + (layerWidth - bbox.width) / 2}, ${yOffset})`);
 					yOffset += bbox.height + bubbleSpacing;
 				});
 
@@ -555,7 +603,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 	}
 
 	let last_rect = null;
-	Object.entries(layers).filter(([layerName, _])=>layerName).forEach(([layerName, items]) => {
+	Object.entries(layers).filter(([layerName, _]) => layerName).forEach(([layerName, items]) => {
 		if (items.length === 0) return;
 
 		const layer_group = servingTableG.insert("g", ":first-child")
@@ -594,7 +642,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 			return tea;
 		});
 
-		const layerHeight = max(bboxes.map(b => b.height))+2*bubbleSpacing;
+		const layerHeight = max(bboxes.map(b => b.height)) + 2 * bubbleSpacing;
 
 		let xOffset = bubbleSpacing;
 		let yOffset = layerHeight;
@@ -623,7 +671,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 			.attr("height", yOffset + bubbleSpacing)
 			.attr("fill", fill);
 	});
-	
+
 	const final_height = max([grey_height, totalHeight]);
 
 	servingTableG.insert("rect", ":first-child")
@@ -668,7 +716,7 @@ function measureSvgContent(g) {
 }
 
 const infoPanelPrototype = {
-	initializePanel(element,context) {
+	initializePanel(element, context) {
 		this.element = element;
 		this.context = context;
 	},
@@ -677,7 +725,7 @@ const infoPanelPrototype = {
 		this.element.innerHTML = "";
 		const element = d3.select(this.element)
 		element.append('h2')
-			.html(`${nodeInfo.data.properties.kind}: ${nodeInfo.data.properties.simpleName.replace(/([A-Z])/g, '\u200B$1') }`);
+			.html(`${nodeInfo.data.properties.kind}: ${nodeInfo.data.properties.simpleName.replace(/([A-Z])/g, '\u200B$1')}`);
 		const ul = element.append("ul");
 
 		if ("qualifiedName" in nodeInfo.data.properties) {
@@ -713,15 +761,162 @@ const infoPanelPrototype = {
 	}
 };
 
-const createInfoPanel = (context)=>(element)=> {
+const createInfoPanel = (context) => (element) => {
 	const panel = Object.create(infoPanelPrototype);
 	panel.initializePanel(element, context);
 	return panel;
 };
 
+function getIntersectionPoint(source, target) {
+	const dx = target.cx - source.cx;
+	const dy = target.cy - source.cy;
+	const slope = dy / dx;
+
+	let ix = target.cx; // intersection x
+	let iy = target.cy; // intersection y
+
+	if (Math.abs(dy) * target.width > Math.abs(dx) * target.height) {
+		// Vertical intersection
+		if (dy > 0) {
+			iy = target.y; // top
+		} else {
+			iy = target.y + target.height; // bottom
+		}
+		ix = target.cx - dy / slope;
+	} else {
+		// Horizontal intersection
+		if (dx > 0) {
+			ix = target.x; // left
+		} else {
+			ix = target.x + target.width; // right
+		}
+		iy = target.cy - slope * dx;
+	}
+
+	return { x: ix, y: iy };
+}
+
+// Helper function to parse the transform string
+function parseTransform(transform) {
+	const translateMatch = /translate\(([^,]+),?([^,]*)\)/.exec(transform);
+	const scaleMatch = /scale\(([^)]+)\)/.exec(transform);
+
+	return {
+		x: translateMatch ? parseFloat(translateMatch[1]) : 0,
+		y: translateMatch && translateMatch[2] ? parseFloat(translateMatch[2]) : 0,
+		k: scaleMatch ? parseFloat(scaleMatch[1]) : 1,
+	};
+}
+
+function getTransformedPosition(g) {
+	const bbox = g.node().getBBox(); // Get bounding box of the <g> element
+
+	// Get the transformation matrix of the <g> element
+	const { x, y, k } = parseTransform(g.attr("transform"));
+
+	// Apply the transformation matrix to the bounding box to get actual position
+	const transformedX = x + bbox.x * k;
+	const transformedY = y + bbox.y * k;
+	const transformedWidth = bbox.width * k;
+	const transformedHeight = bbox.height * k;
+
+	// Calculate the center based on the transformed position
+	const center = {
+		x: transformedX,
+		y: transformedY,
+		width: transformedWidth,
+		height: transformedHeight,
+		cx: transformedX + transformedWidth / 2,
+		cy: transformedY + transformedHeight / 2
+	};
+
+	return center;
+}
+
+function drawArrows(svg, source, dependencies) {
+
+	// Find common elements between outgoing and incoming
+	const both = dependencies.outgoing.filter(item => dependencies.incoming.includes(item));
+
+	// Remove common elements from outgoing and incoming arrays
+	const outgoing = dependencies.outgoing.filter(item => !both.includes(item));
+	const incoming = dependencies.incoming.filter(item => !both.includes(item));
+
+	const g = svg.select("g");
+	const thisG = g.select(`g[id='${source.id()}']`);
+	const thisCenter = getTransformedPosition(thisG);
+
+	g.selectAll(".dep-line").remove();
+
+	console.log({ g: thisG.attr("id"), center: thisCenter });
+
+	// Draw outgoing arrows
+	outgoing.forEach(node => {
+		const targetG = g.select(`g[id='${node.id()}']`);
+		if (!targetG.empty() && targetG.node() !== thisG.node()) {
+			const targetCenter = getTransformedPosition(targetG);
+
+			const targetPoint = getIntersectionPoint(thisCenter, targetCenter);
+
+			console.log({ g: targetG.attr("id"), center: targetCenter });
+
+			g.append('line')
+				.attr("class", "dep-line")
+				.attr('x1', thisCenter.cx)
+				.attr('y1', thisCenter.cy)
+				.attr('x2', targetCenter.cx)
+				.attr('y2', targetCenter.cy)
+				.attr('stroke-width', '3pt')
+				.attr('stroke', 'blue');
+		}
+	});
+
+	// Draw incoming arrows
+	incoming.forEach(node => {
+		const sourceG = g.select(`g[id='${node.id()}']`);
+		if (!sourceG.empty() && sourceG.node() !== thisG.node()) {
+			const sourceCenter = getTransformedPosition(sourceG);
+
+			const sourcePoint = getIntersectionPoint(sourceCenter, thisCenter);
+
+			console.log({ g: sourceG.attr("id"), center: sourceCenter });
+
+			g.append('line')
+				.attr("class", "dep-line")
+				.attr('x1', sourceCenter.cx)
+				.attr('y1', sourceCenter.cy)
+				.attr('x2', thisCenter.cx)
+				.attr('y2', thisCenter.cy)
+				.attr('stroke-width', '3pt')
+				.attr('stroke', 'green');
+		}
+	});
+
+	// Draw "both" arrows
+	both.forEach(node => {
+		const sourceG = g.select(`g[id='${node.id()}']`);
+		if (!sourceG.empty() && sourceG.node() !== thisG.node()) {
+			const sourceCenter = getTransformedPosition(sourceG);
+
+			const sourcePoint = getIntersectionPoint(sourceCenter, thisCenter);
+
+			console.log({ g: sourceG.attr("id"), center: sourceCenter });
+
+			g.append('line')
+				.attr("class", "dep-line")
+				.attr('x1', sourceCenter.cx)
+				.attr('y1', sourceCenter.cy)
+				.attr('x2', thisCenter.cx)
+				.attr('y2', thisCenter.cy)
+				.attr('stroke-width', '3pt')
+				.attr('stroke', 'yellow');
+		}
+	});
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 	function handleFileUpload(event) {
-		const file = event.target.files[0]; 
+		const file = event.target.files[0];
 
 		if (!file) {
 			return;
@@ -742,7 +937,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 				const invokes = jsonData.elements.edges.filter((e) => e.data.label === "invokes");
 				const hasScript = jsonData.elements.edges.filter((e) => e.data.label === "hasScript");
-				const calls = lift(hasScript, invokes, "calls").filter((e)=>e.data.source !== e.data.target);
+				const calls = lift(hasScript, invokes, "calls").filter((e) => e.data.source !== e.data.target);
 				jsonData.elements.edges = [...jsonData.elements.edges, ...calls];
 
 				const context = {
@@ -767,6 +962,10 @@ document.addEventListener('DOMContentLoaded', () => {
 					}
 				};
 				context.infoPanel = createInfoPanel(context)(document.getElementById("info-panel"));
+				context.arrowRenderer = (nodeInfo) => {
+					drawArrows(d3.select("svg"), nodeInfo, pkgDepsOf(nodeInfo));
+				};
+
 
 				const packages = context.graph.nodes(node => node.hasLabel("Container") && !node.hasLabel("Structure"));
 				const getBubbleTeaData = getBubbleTeaDataWithContext(context);
@@ -780,7 +979,7 @@ document.addEventListener('DOMContentLoaded', () => {
 					const divHeight = chartContainer.clientHeight * 0.997;
 					const g = servingTable.select("g");
 					const svgWidth = g.attr("width");
-					const scale = divWidth/svgWidth * 0.6;
+					const scale = divWidth / svgWidth * 0.6;
 
 					const zoom = d3.zoom().on('zoom', ({ transform }) => {
 						g.attr('transform', transform);
@@ -791,13 +990,13 @@ document.addEventListener('DOMContentLoaded', () => {
 						.attr("height", divHeight)
 						.call(zoom);
 
-					const initialTransform = d3.zoomIdentity.translate(divWidth*0.2,12).scale(scale);
+					const initialTransform = d3.zoomIdentity.translate(divWidth * 0.2, 12).scale(scale);
 					servingTable.call(zoom.transform, initialTransform);
 
 					const resetZoom = document.createElement("button");
 					resetZoom.id = "reset-zoom";
 					resetZoom.textContent = "🧭";
-					resetZoom.addEventListener("click", (event) => {
+					resetZoom.addEventListener("click", (_event) => {
 						servingTable.call(zoom.transform, initialTransform);
 					});
 
@@ -820,12 +1019,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 					let lastSelection = null;
 
-					d3.selectAll(".bubble, .tea").on("click", function(event, d) {
-							event.stopPropagation(); // Prevent interference from parent listeners
-							d.hoverSignal.emit(d);
-							if (lastSelection) lastSelection.attr("filter", null);
-							d3.select(this).attr("filter", "url(#highlight)");
-							lastSelection = d3.select(this);
+					d3.selectAll(".bubble, .tea").on("click", function (event, d) {
+						event.stopPropagation(); // Prevent interference from parent listeners
+						d.signal.emit(d);
+						if (lastSelection) lastSelection.attr("filter", null);
+						d3.select(this).attr("filter", "url(#highlight)");
+						lastSelection = d3.select(this);
 					});
 				}
 				// });
@@ -840,7 +1039,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	document.getElementById('file-selector').addEventListener('change', handleFileUpload);
 
 	document.getElementById('upload-button').addEventListener('click', () => {
-		document.getElementById('file-selector').click(); 
+		document.getElementById('file-selector').click();
 	});
 });
 
