@@ -32,6 +32,9 @@ const nodePrototype = {
 		}
 		return this;
 	},
+	hasProperty(key) {
+		return (key in this.data.properties);
+	},
 	property(key, value = undefined) {
 		if (this.data.properties === undefined) {
 			this.data.properties = {};

@@ -726,38 +726,63 @@ const infoPanelPrototype = {
 		this.element.innerHTML = "";
 		const element = d3.select(this.element)
 		element.append('h2')
-			.html(`${nodeInfo.data.properties.kind}: ${nodeInfo.data.properties.simpleName.replace(/([A-Z])/g, '\u200B$1')}`);
+			.html(`${nodeInfo.property("kind")}: ${nodeInfo.property("simpleName").replace(/([A-Z])/g, '\u200B$1')}`);
 		const ul = element.append("ul");
 
-		if ("qualifiedName" in nodeInfo.data.properties) {
+		if (nodeInfo.hasProperty("qualifiedName")) {
 			const li = ul.append("li").attr("class", "info");
 			li.append('h3')
 				.attr("class", "info")
 				.text("qualifiedName");
 			const prop = li.append('div')
 				.attr("class", "info")
-				.text(nodeInfo.data.properties["qualifiedName"]
+				.text(nodeInfo.property("qualifiedName")
 					.replace(/\./g, '.\u200B')
 					.replace(/([A-Z])/g, '\u200B$1'));
 		}
 
 		const keys = ["description", "docComment", "keywords", "layer", "roleStereotype", "dependencyProfile"];
 		for (let key of keys) {
-			if (key in nodeInfo.data.properties) {
+			if (nodeInfo.hasProperty(key)) {
 				const li = ul.append("li").attr("class", "info");
 				li.append('h3')
 					.attr("class", "info")
 					.text(key);
 				const prop = li.append('div')
 					.attr("class", "info")
-					.html(nodeInfo.data.properties[key]);
+					.html(nodeInfo.property(key));
 
 				const hueKey = key + "Hues";
-				if ((hueKey) in this.context && nodeInfo.data.properties[key] in this.context[hueKey]) {
-					const hue = this.context[hueKey][nodeInfo.data.properties[key]];
+				if ((hueKey) in this.context && nodeInfo.property(key) in this.context[hueKey]) {
+					const hue = this.context[hueKey][nodeInfo.property(key)];
 					prop.attr("style", `background-color: hsl(${hue}, 100%, 95%)`)
 				}
 			}
+		}
+
+		if (nodeInfo.hasLabel("Structure")) {
+			console.log(nodeInfo);
+			const methods = [...methodsOf(nodeInfo)];
+			console.log(methods);
+			const li = ul.append("li").attr("class", "info");
+			li.append('h3')
+				.attr("class", "info")
+				.text("methods");
+			const prop = li.append('div')
+				.attr("class", "info");
+			
+			const inner_ul = prop.append("ul");
+			methods.sort((a, b) => a.property("simpleName").localeCompare(b.property("simpleName")));
+			methods.forEach((m) => {
+
+				const li = inner_ul.append("li").attr("class", "info");
+				li.append('h3')
+					.attr("class", "info")
+					.text(m.property("simpleName"));
+				const prop = li.append('div')
+					.attr("class", "info")
+					.html(m.property("description"));
+			});
 		}
 	}
 };
@@ -834,6 +859,21 @@ function getTransformedPosition(g) {
 	return center;
 }
 
+function bringToFront(selection) {
+	selection.each(function () {
+		this.parentNode.appendChild(this);
+	});
+}
+
+function moveAfter(selection, reference) {
+	const node = selection.node(); // The element to be moved
+	const refNode = reference.node(); // The element to move after
+	if (node && refNode && refNode.parentNode) {
+		refNode.parentNode.insertBefore(node, refNode.nextSibling);
+	}
+}
+
+
 function drawArrows(svg, source, dependencies) {
 
 	// Find common elements between outgoing and incoming
@@ -861,7 +901,7 @@ function drawArrows(svg, source, dependencies) {
 
 			console.log({ g: targetG.attr("id"), center: targetCenter });
 
-			g.append('line')
+			const line = g.append('line')
 				.attr("class", "dep-line")
 				.attr('x1', thisCenter.cx)
 				.attr('y1', thisCenter.cy)
@@ -869,6 +909,8 @@ function drawArrows(svg, source, dependencies) {
 				.attr('y2', targetCenter.cy)
 				.attr('stroke-width', '3pt')
 				.attr('stroke', 'blue');
+
+			moveAfter(targetG, line);
 		}
 	});
 
@@ -882,7 +924,7 @@ function drawArrows(svg, source, dependencies) {
 
 			console.log({ g: sourceG.attr("id"), center: sourceCenter });
 
-			g.append('line')
+			const line = g.append('line')
 				.attr("class", "dep-line")
 				.attr('x1', sourceCenter.cx)
 				.attr('y1', sourceCenter.cy)
@@ -890,6 +932,8 @@ function drawArrows(svg, source, dependencies) {
 				.attr('y2', thisCenter.cy)
 				.attr('stroke-width', '3pt')
 				.attr('stroke', 'green');
+
+			moveAfter(sourceG, line);
 		}
 	});
 
@@ -903,7 +947,7 @@ function drawArrows(svg, source, dependencies) {
 
 			console.log({ g: sourceG.attr("id"), center: sourceCenter });
 
-			g.append('line')
+			const line = g.append('line')
 				.attr("class", "dep-line")
 				.attr('x1', sourceCenter.cx)
 				.attr('y1', sourceCenter.cy)
@@ -911,8 +955,12 @@ function drawArrows(svg, source, dependencies) {
 				.attr('y2', thisCenter.cy)
 				.attr('stroke-width', '3pt')
 				.attr('stroke', 'yellow');
+
+			moveAfter(sourceG, line);
 		}
 	});
+
+	bringToFront(thisG);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
