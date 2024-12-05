@@ -450,15 +450,16 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 		.attr("id", pkg.id())
 		.style("pointer-events", "all")
 		.datum(pkg);
-	g.append(() => pkgG.node());
+	g.node().appendChild(pkgG.node());
 	// Sort and map bubble data to draw pie charts
 	data
 		.sort((a, b) => compare(a.bubbleData)(b.bubbleData))
 		.forEach((d, index) => {
 			const [xPos, yPos] = positions[index];
 			const bubble = drawBubble(d);
-			g.append(() => bubble.node());
-			d3.select(bubble.node()).attr("transform", `translate(${xPos}, ${yPos})`);
+			g.node().appendChild(bubble.node());
+			d3.select(bubble.node())
+				.attr("transform", `translate(${xPos}, ${yPos})`);
 		});
 
 	// Add package name text
@@ -1022,9 +1023,9 @@ document.addEventListener('DOMContentLoaded', () => {
 					d3.selectAll(".bubble, .tea").on("click", function (event, d) {
 						event.stopPropagation(); // Prevent interference from parent listeners
 						d.signal.emit(d);
-						if (lastSelection) lastSelection.attr("filter", null);
+						d3.select(lastSelection).attr("filter", null);
 						d3.select(this).attr("filter", "url(#highlight)");
-						lastSelection = d3.select(this);
+						lastSelection = d3.select(this).node();
 					});
 				}
 				// });
