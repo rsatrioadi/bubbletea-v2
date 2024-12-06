@@ -308,21 +308,6 @@ const createShadow = (svg) => {
 
 };
 
-const createArrowHead = (svg) => {
-	const defs = svg.select("defs");
-	defs.append('marker')
-		.attr('id', 'arrow')
-		.attr('viewBox', '0 0 10 10')
-		.attr('refX', 5)
-		.attr('refY', 5)
-		.attr('markerWidth', 6)
-		.attr('markerHeight', 6)
-		.attr('orient', 'auto-start-reverse')
-		.append('path')
-		.attr('d', 'M 0 0 L 10 5 L 0 10 Z')
-		.attr('fill', 'black');
-};
-
 const createHighlighter = (svg) => {
 	const defs = svg.select("defs");
 	const filter = defs.append("filter")
@@ -535,7 +520,6 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 	createShadow(servingTable);
 	createGradient(servingTable);
 	createHighlighter(servingTable);
-	createArrowHead(servingTable);
 
 	let grey_area = null;
 	let grey_height = 0;
@@ -907,10 +891,14 @@ function drawArrows(svg, source, dependencies) {
 				.attr('y1', thisCenter.cy)
 				.attr('x2', targetCenter.cx)
 				.attr('y2', targetCenter.cy)
-				.attr('stroke-width', '3pt')
-				.attr('stroke', 'blue');
+				.attr('stroke-width', '6pt')
+				.attr('stroke-opacity', 0.5)
+				.attr('stroke', 'blue')
+				.attr("stroke-dasharray", "21, 7")
+				.attr("stroke-dashoffset", 0);
 
 			moveAfter(targetG, line);
+
 		}
 	});
 
@@ -930,8 +918,16 @@ function drawArrows(svg, source, dependencies) {
 				.attr('y1', sourceCenter.cy)
 				.attr('x2', thisCenter.cx)
 				.attr('y2', thisCenter.cy)
-				.attr('stroke-width', '3pt')
-				.attr('stroke', 'green');
+				.attr('stroke-width', '6pt')
+				.attr('stroke-opacity', 0.5)
+				.attr('stroke', 'green')
+				.attr("stroke-dasharray", "21, 7")
+				.attr("stroke-dashoffset", 0);
+
+			line.transition()
+				.duration(1000)
+				.ease(d3.easeLinear)
+				.attr("stroke-dashoffset", -20);
 
 			moveAfter(sourceG, line);
 		}
@@ -953,12 +949,18 @@ function drawArrows(svg, source, dependencies) {
 				.attr('y1', sourceCenter.cy)
 				.attr('x2', thisCenter.cx)
 				.attr('y2', thisCenter.cy)
-				.attr('stroke-width', '3pt')
+				.attr('stroke-width', '6pt')
+				.attr('stroke-opacity', 0.5)
 				.attr('stroke', 'yellow');
 
 			moveAfter(sourceG, line);
 		}
 	});
+
+	d3.selectAll('line.dep-line').transition()
+		.duration(1000000)
+		.ease(d3.easeLinear)
+		.attr("stroke-dashoffset", -20000);
 
 	bringToFront(thisG);
 }
