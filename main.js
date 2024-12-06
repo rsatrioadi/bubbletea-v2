@@ -20,8 +20,6 @@ const pkgDepsOf = (pkg) => {
 		return acc;
 	}, { outgoing: [], incoming: [] });
 
-	console.log(pkg.id(), classDeps);
-
 	return classDeps;
 };
 
@@ -510,6 +508,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 	const servingTable = d3.create("svg");
 	const servingTableG = servingTable
 		.append("g")
+		.attr("id", "serving-table")
 		.attr("x", 0)
 		.attr("y", 0);
 	// .attr("width", tableWidth);
@@ -745,9 +744,9 @@ const infoPanelPrototype = {
 		}
 
 		if (nodeInfo.hasLabel("Structure")) {
-			console.log(nodeInfo);
+			// console.log(nodeInfo);
 			const methods = [...methodsOf(nodeInfo)];
-			console.log(methods);
+			// console.log(methods);
 			const li = ul.append("li").attr("class", "info");
 			li.append('h3')
 				.attr("class", "info")
@@ -873,8 +872,6 @@ function drawArrows(svg, source, dependencies) {
 
 	g.selectAll(".dep-line").remove();
 
-	console.log({ g: thisG.attr("id"), center: thisCenter });
-
 	// Draw outgoing arrows
 	outgoing.forEach(node => {
 		const targetG = g.select(`g[id='${node.id()}']`);
@@ -883,7 +880,7 @@ function drawArrows(svg, source, dependencies) {
 
 			const targetPoint = getIntersectionPoint(thisCenter, targetCenter);
 
-			console.log({ g: targetG.attr("id"), center: targetCenter });
+			// console.log({ g: targetG.attr("id"), center: targetCenter });
 
 			const line = g.append('line')
 				.attr("class", "dep-line")
@@ -910,7 +907,7 @@ function drawArrows(svg, source, dependencies) {
 
 			const sourcePoint = getIntersectionPoint(sourceCenter, thisCenter);
 
-			console.log({ g: sourceG.attr("id"), center: sourceCenter });
+			// console.log({ g: sourceG.attr("id"), center: sourceCenter });
 
 			const line = g.append('line')
 				.attr("class", "dep-line")
@@ -941,7 +938,7 @@ function drawArrows(svg, source, dependencies) {
 
 			const sourcePoint = getIntersectionPoint(sourceCenter, thisCenter);
 
-			console.log({ g: sourceG.attr("id"), center: sourceCenter });
+			// console.log({ g: sourceG.attr("id"), center: sourceCenter });
 
 			const line = g.append('line')
 				.attr("class", "dep-line")
@@ -1070,6 +1067,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 					let lastSelection = null;
 
+					d3.select("#serving-table").on("click", function (event) {
+						d3.select(lastSelection).attr("filter", null);
+						d3.selectAll(".dep-line").remove();
+						lastSelection = null;
+						document.getElementById("info-panel").innerHTML = "";
+					});
 					d3.selectAll(".bubble, .tea").on("click", function (event, d) {
 						event.stopPropagation(); // Prevent interference from parent listeners
 						d.signal.emit(d);
