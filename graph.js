@@ -155,12 +155,13 @@ const graphPrototype = {
 		}
 		return this.elements.nodes;
 	},
-	edges(label = undefined, predicate = undefined) {
+	edges(label, predicate) {
+		console.log(label, predicate);
 		if (label) {
 			if (predicate) {
-				return this._meta._edges[label].filter(predicate);
+				return (this._meta._edges[label]??[]).filter(predicate);
 			} else {
-				return this._meta._edges[label];
+				return this._meta._edges[label]??[];
 			}
 		} else if (predicate) {
 			return Object.values(this._meta._edges).flat().filter(predicate); // Use the edges map for fast access
@@ -192,7 +193,6 @@ export const attachEdge = (edge, graph) => {
 	edge._meta._target = undefined;
 };
 
-// Utility to create and attach the graph prototype
 // Utility to create and attach the graph prototype
 export const createGraph = (graphData = { elements: { nodes: [], edges: [] } }) => {
 	Object.setPrototypeOf(graphData, graphPrototype);
@@ -227,26 +227,34 @@ export const invert = (edgeList) =>
 	}));
 
 export const compose = function (l1, l2, newlabel) {
-	if (l1 && l2) {
-		const mapping = new Map(
-			l2.map(e => e.data).map((
-				{ source, target, label, properties },
-			) => [source, { target, label, weight: properties?.weight || 1 }]),
-		);
+	if (!Array.isArray(l1) || !Array.isArray(l2)) return [];
 
-		const result = [];
-		const l1data = l1.map(e => e.data);
-		for (const { source: s1, target: t1, label, properties } of l1data) {
-			const mappingEntry = mapping.get(t1);
+	// Create a mapping from l2 with multiple targets per source
+	const mapping = new Map();
 
-			if (mappingEntry) {
-				const newWeight = mappingEntry.weight * (properties?.weight || 1);
-				const existingEntryIndex = result.findIndex((obj) =>
-					obj.data.source === s1 && obj.data.target === mappingEntry.target
-				);
+	for (const { data: { source, target, label, properties } } of l2) {
+		const weight = properties?.weight !== undefined ? properties.weight : 1;
 
-				if (existingEntryIndex === -1) {
-					result.push({
+		if (!mapping.has(source)) {
+			mapping.set(source, []);
+		}
+		mapping.get(source).push({ target, label, weight });
+	}
+
+	const aggregatedEdges = new Map(); // Map to aggregate weights for same source-target pairs
+
+	// Process l1 and compose new results
+	for (const { data: { source: s1, target: t1, label, properties } } of l1) {
+		const mappings = mapping.get(t1);
+
+		if (mappings) {
+			for (const mappingEntry of mappings) {
+				const newWeight = mappingEntry.weight * (properties?.weight !== undefined ? properties.weight : 1);
+				const key = `${s1}-${mappingEntry.target}`; // Unique key for source-target pair
+
+				if (!aggregatedEdges.has(key)) {
+					// Add a new entry
+					aggregatedEdges.set(key, {
 						data: {
 							source: s1,
 							target: mappingEntry.target,
@@ -255,16 +263,17 @@ export const compose = function (l1, l2, newlabel) {
 						}
 					});
 				} else {
-					result[existingEntryIndex].data.properties.weight += newWeight;
+					// Update the weight of the existing entry
+					aggregatedEdges.get(key).data.properties.weight += newWeight;
 				}
 			}
 		}
-
-		return result;
 	}
-	return [];
-}
+
+	return Array.from(aggregatedEdges.values());
+};
+
 
 export const lift = function (rel1, rel2, newlabel) {
 	return compose(compose(rel1, rel2), invert(rel1), newlabel);
-}
+};

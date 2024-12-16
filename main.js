@@ -9,18 +9,27 @@ const classDepsOf = (clasz) => {
 	}
 };
 
-const pkgDepsOf = (pkg) => {
-	const classDeps = classesOf(pkg).map(classDepsOf).reduce((acc, { outgoing, incoming }) => {
-		// Add outgoing to the accumulated outgoing array, avoiding duplicates
-		acc.outgoing = [...new Set([...acc.outgoing, ...outgoing.map((n) => n.property("package"))])];
-
-		// Add incoming to the accumulated incoming array, avoiding duplicates
-		acc.incoming = [...new Set([...acc.incoming, ...incoming.map((n) => n.property("package"))])];
-
+const pkgDepsOf = (node) => {
+	if (node.hasLabel("Structure")) {
+		const acc = classDepsOf(node);
+		acc.outgoing = [...new Set([...acc.outgoing.map((n) => n.property("package"))])];
+		acc.incoming = [...new Set([...acc.incoming.map((n) => n.property("package"))])];
 		return acc;
-	}, { outgoing: [], incoming: [] });
+	} else if (node.hasLabel("Container")) {
+		const classDeps = classesOf(node).map(classDepsOf).reduce((acc, { outgoing, incoming }) => {
+			// Add outgoing to the accumulated outgoing array, avoiding duplicates
+			acc.outgoing = [...new Set([...acc.outgoing, ...outgoing.map((n) => n.property("package"))])];
 
-	return classDeps;
+			// Add incoming to the accumulated incoming array, avoiding duplicates
+			acc.incoming = [...new Set([...acc.incoming, ...incoming.map((n) => n.property("package"))])];
+
+			return acc;
+		}, { outgoing: [], incoming: [] });
+
+		return classDeps;
+	} else {
+		return { outgoing: [], incoming: [] };
+	}
 };
 
 const classesOf = (pkg) => {
@@ -121,9 +130,11 @@ const drawBubbleWithContext = (context) => (data) => {
 		.style("pointer-events", "all")
 		.datum(clasz);
 
-	const rsColor = "roleStereotype" in clasz.data.properties ? `hsl(${context.roleStereotypeHues[clasz.data.properties["roleStereotype"]]}, 100%, 70%)` : "hsl(0, 0%, 60%)";
+	// const rsColor = "roleStereotype" in clasz.data.properties ? `hsl(${context.roleStereotypeHues[clasz.data.properties["roleStereotype"]]}, 100%, 70%)` : "hsl(0, 0%, 60%)";
+	const rsColor = "black";
 	const rs = bubble.append("circle")
 		.attr("r", radius + 5 / 2)
+		.attr("fill-opacity", 0.5)
 		.attr("fill", rsColor);
 
 	if (bubbleData.length === 0) {
@@ -144,6 +155,7 @@ const drawBubbleWithContext = (context) => (data) => {
 
 	clasz.signal = createSignal();
 	clasz.signal.connect(context.infoPanel.renderInfo.bind(context.infoPanel));
+	clasz.signal.connect(context.arrowRenderer);
 
 	const circle = bubble.append("circle")
 		.attr("class", "shine")
@@ -448,7 +460,7 @@ const drawBubbleTeaWithContext = (context) => (bubbleTeaData) => {
 	// Add package name text
 	g.append("text")
 		.attr("x", layoutWidth / 2)
-		.attr("y", layoutHeight + 20)
+		.attr("y", 0)
 		.attr("text-anchor", "middle")
 		.style("font-size", "20px")
 		.text(pkgName);
@@ -555,7 +567,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 				groups.forEach((g, i) => {
 					servingTableG.node().append(g.node());
 					const bbox = bboxes[i];
-					g.attr("transform", `translate(${(tableWidth - layerWidth) + (layerWidth - bbox.width) / 2}, ${yOffset})`);
+					g.attr("transform", `translate(${(tableWidth - layerWidth) + (layerWidth - bbox.width) / 2}, ${yOffset + bubbleSpacing/2})`);
 					yOffset += bbox.height + bubbleSpacing;
 				});
 
@@ -626,7 +638,9 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 			return tea;
 		});
 
-		const layerHeight = max(bboxes.map(b => b.height)) + 2 * bubbleSpacing;
+		const maxTeaHeight = max(bboxes.map(b => b.height));
+
+		const layerHeight = maxTeaHeight + 2 * bubbleSpacing;
 
 		let xOffset = bubbleSpacing;
 		let yOffset = layerHeight;
@@ -644,7 +658,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 				yOffset += layerHeight;
 				totalHeight += layerHeight;
 			}
-			g.attr("transform", `translate(${xOffset - bbox.x}, ${layerOffset + yOffset - bbox.height})`);
+			g.attr("transform", `translate(${xOffset - bbox.x}, ${layerOffset + yOffset - maxTeaHeight + bubbleSpacing/2})`);
 			xOffset += bbox.width + bubbleSpacing;
 		});
 
@@ -704,69 +718,143 @@ const infoPanelPrototype = {
 		this.element = element;
 		this.context = context;
 	},
-
-	renderInfo(nodeInfo) {
-		this.element.innerHTML = "";
-		const element = d3.select(this.element)
-		element.append('h2')
-			.html(`${nodeInfo.property("kind")}: ${nodeInfo.property("simpleName").replace(/([A-Z])/g, '\u200B$1')}`);
-		const ul = element.append("ul");
+	prepareRenderData(nodeInfo) {
+		const renderData = {
+			title: `${nodeInfo.property("kind")}: ${nodeInfo.property("simpleName").replace(/([A-Z])/g, '\u200B$1')}`,
+			properties: []
+		};
 
 		if (nodeInfo.hasProperty("qualifiedName")) {
-			const li = ul.append("li").attr("class", "info");
-			li.append('h3')
-				.attr("class", "info")
-				.text("qualifiedName");
-			const prop = li.append('div')
-				.attr("class", "info")
-				.text(nodeInfo.property("qualifiedName")
+			renderData.properties.push({
+				key: "qualifiedName",
+				value: nodeInfo.property("qualifiedName")
 					.replace(/\./g, '.\u200B')
-					.replace(/([A-Z])/g, '\u200B$1'));
+					.replace(/([A-Z])/g, '\u200B$1')
+			});
 		}
 
-		const keys = ["description", "docComment", "keywords", "layer", "roleStereotype", "dependencyProfile"];
+		if (nodeInfo.hasProperty("description")) {
+			const d = d3.create('div');
+			if (nodeInfo.hasProperty("title")) {
+				d.append('p').append('b').text(nodeInfo.property("title"));
+			}
+			d.append('p').text(nodeInfo.property("description"));
+			renderData.properties.push({
+				key: "description",
+				value: d.node().innerHTML
+					.replace(/\./g, '.\u200B')
+					.replace(/([A-Z])/g, '\u200B$1')
+			});
+		}
+
+		const keys = ["docComment", "keywords", "layer", "roleStereotype", "dependencyProfile"];
 		for (let key of keys) {
 			if (nodeInfo.hasProperty(key)) {
-				const li = ul.append("li").attr("class", "info");
-				li.append('h3')
-					.attr("class", "info")
-					.text(key);
-				const prop = li.append('div')
-					.attr("class", "info")
-					.html(nodeInfo.property(key));
+				const property = {
+					key: key,
+					value: nodeInfo.property(key)
+				};
 
 				const hueKey = key + "Hues";
 				if ((hueKey) in this.context && nodeInfo.property(key) in this.context[hueKey]) {
-					const hue = this.context[hueKey][nodeInfo.property(key)];
-					prop.attr("style", `background-color: hsl(${hue}, 100%, 95%)`)
+					property.style = `color: hsl(${this.context[hueKey][nodeInfo.property(key)]}, 100%, 30%); font-weight: bold;`;
 				}
+
+				renderData.properties.push(property);
 			}
 		}
 
 		if (nodeInfo.hasLabel("Structure")) {
-			// console.log(nodeInfo);
 			const methods = [...methodsOf(nodeInfo)];
-			// console.log(methods);
+			methods.sort((a, b) => a.property("simpleName").localeCompare(b.property("simpleName")));
+
+			renderData.properties.push({
+				key: "methods",
+				value: methods.map(m => {
+					const d = d3.create('div');
+					d.append('h3')
+						.attr("class", "info")
+						.text(m.property("simpleName"));
+
+					d.append('div')
+						.attr("class", "info")
+						.attr("style", m.property("layer") ? `background-color: hsl(${stringToHue(m.property("layer"))}, 100%, 95%);` : null)
+						.html(m.property("description"));
+
+						
+					return d.node().outerHTML;
+				})
+			});
+		} else if (nodeInfo.hasLabel("Container")) {
+			const incoming_tmp = nodeInfo.sources("dependsOn");
+			const outgoing_tmp = nodeInfo.targets("dependsOn");
+
+			const both = incoming_tmp.filter(item => outgoing_tmp.includes(item));
+			const outgoing = outgoing_tmp.filter(item => !both.includes(item));
+			const incoming = incoming_tmp.filter(item => !both.includes(item));
+
+			console.log(incoming_tmp, outgoing_tmp);
+
+			// if (incoming.length > 0) {
+			// 	renderData.properties.push({
+			// 		key: "incomingDependencies",
+			// 		value: incoming.map(n => {
+			// 			const d = d3.create('div');
+			// 			d.append('h3')
+			// 				.attr("class", "info")
+			// 				.text(m.property("simpleName"));
+
+			// 			d.append('div')
+			// 				.attr("class", "info")
+			// 				.attr("style", m.property("layer") ? `background-color: hsl(${stringToHue(m.property("layer"))}, 100%, 95%);` : null)
+			// 				.html(m.property("description"));
+
+
+			// 			return d.node().outerHTML;
+			// 		})
+			// 	});
+			// }
+		}
+
+		return renderData;
+	},
+	renderInfo(nodeInfo) {
+		const renderData = this.prepareRenderData(nodeInfo);
+
+		this.element.innerHTML = "";
+		const element = d3.select(this.element);
+
+		// Render the title
+		element.append('h2').html(renderData.title);
+
+		// Render the properties
+		const ul = element.append("ul");
+
+		renderData.properties.forEach(prop => {
 			const li = ul.append("li").attr("class", "info");
+
 			li.append('h3')
 				.attr("class", "info")
-				.text("methods");
-			const prop = li.append('div')
-				.attr("class", "info");
-			
-			const inner_ul = prop.append("ul");
-			methods.sort((a, b) => a.property("simpleName").localeCompare(b.property("simpleName")));
-			methods.forEach((m) => {
+				.text(prop.key);
 
-				const li = inner_ul.append("li").attr("class", "info");
-				li.append('h3')
-					.attr("class", "info")
-					.text(m.property("simpleName"));
-				const prop = li.append('div')
-					.attr("class", "info")
-					.html(m.property("description"));
-			});
-		}
+			const propContainer = li.append('div').attr("class", "info");
+
+			if (prop.style) {
+				propContainer.attr("style", prop.style);
+			}
+
+			if (Array.isArray(prop.value)) {
+				// Nested list for arrays
+				const innerUl = propContainer.append("ul");
+				prop.value.forEach(item => {
+					const innerLi = innerUl.append("li").attr("class", "info");
+					innerLi.html(item);
+				});
+			} else {
+				// Simple property value
+				propContainer.html(prop.value);
+			}
+		});
 	}
 };
 
@@ -867,7 +955,9 @@ function drawArrows(svg, source, dependencies) {
 	const incoming = dependencies.incoming.filter(item => !both.includes(item));
 
 	const g = svg.select("g");
-	const thisG = g.select(`g[id='${source.id()}']`);
+	const source_id = source.hasLabel("Structure") ? source.property("package").id() : source.id();
+	console.log(source_id);
+	const thisG = g.select(`g[id='${source_id}']`);
 	const thisCenter = getTransformedPosition(thisG);
 
 	g.selectAll(".dep-line").remove();
@@ -888,14 +978,13 @@ function drawArrows(svg, source, dependencies) {
 				.attr('y1', thisCenter.cy)
 				.attr('x2', targetCenter.cx)
 				.attr('y2', targetCenter.cy)
-				.attr('stroke-width', '6pt')
+				.attr('stroke-width', '3pt')
 				.attr('stroke-opacity', 0.5)
-				.attr('stroke', 'blue')
-				.attr("stroke-dasharray", "21, 7")
-				.attr("stroke-dashoffset", 0);
+				.attr('stroke', 'blue');
+				// .attr("stroke-dasharray", "21, 7")
+				// .attr("stroke-dashoffset", 0);
 
 			moveAfter(targetG, line);
-
 		}
 	});
 
@@ -915,16 +1004,11 @@ function drawArrows(svg, source, dependencies) {
 				.attr('y1', sourceCenter.cy)
 				.attr('x2', thisCenter.cx)
 				.attr('y2', thisCenter.cy)
-				.attr('stroke-width', '6pt')
+				.attr('stroke-width', '3pt')
 				.attr('stroke-opacity', 0.5)
-				.attr('stroke', 'green')
-				.attr("stroke-dasharray", "21, 7")
-				.attr("stroke-dashoffset", 0);
-
-			line.transition()
-				.duration(1000)
-				.ease(d3.easeLinear)
-				.attr("stroke-dashoffset", -20);
+				.attr('stroke', 'green');
+				// .attr("stroke-dasharray", "21, 7")
+				// .attr("stroke-dashoffset", 0);
 
 			moveAfter(sourceG, line);
 		}
@@ -946,18 +1030,18 @@ function drawArrows(svg, source, dependencies) {
 				.attr('y1', sourceCenter.cy)
 				.attr('x2', thisCenter.cx)
 				.attr('y2', thisCenter.cy)
-				.attr('stroke-width', '6pt')
-				.attr('stroke-opacity', 0.5)
-				.attr('stroke', 'yellow');
+				.attr('stroke-width', '3pt')
+				.attr('stroke-opacity', 0.6)
+				.attr('stroke', 'goldenrod');
 
 			moveAfter(sourceG, line);
 		}
 	});
 
-	d3.selectAll('line.dep-line').transition()
-		.duration(1000000)
-		.ease(d3.easeLinear)
-		.attr("stroke-dashoffset", -20000);
+	// d3.selectAll('line.dep-line').transition()
+	// 	.duration(1000000)
+	// 	.ease(d3.easeLinear)
+	// 	.attr("stroke-dashoffset", -20000);
 
 	bringToFront(thisG);
 }
@@ -986,6 +1070,7 @@ document.addEventListener('DOMContentLoaded', () => {
 				const invokes = jsonData.elements.edges.filter((e) => e.data.label === "invokes");
 				const hasScript = jsonData.elements.edges.filter((e) => e.data.label === "hasScript");
 				const calls = lift(hasScript, invokes, "calls").filter((e) => e.data.source !== e.data.target);
+				console.log("calls", calls);
 				jsonData.elements.edges = [...jsonData.elements.edges, ...calls];
 
 				const context = {
@@ -1080,6 +1165,25 @@ document.addEventListener('DOMContentLoaded', () => {
 						d3.select(this).attr("filter", "url(#highlight)");
 						lastSelection = d3.select(this).node();
 					});
+					const tooltip = d3.select("#tooltip");
+					d3.selectAll(".bubble, .tea")
+						.on("mouseover", function (event, d) {
+							// Show the tooltip and set its content
+							event.stopPropagation(); // Prevent interference from parent listeners
+							tooltip.style("display", "block")
+								.html(`<strong>${d.hasLabel("Structure") ? d.property("simpleName") : d.property("qualifiedName")}</strong>`);
+						})
+						.on("mousemove", function (event) {
+							// Position the tooltip near the mouse
+							event.stopPropagation(); // Prevent interference from parent listeners
+							tooltip.style("left", (event.pageX + 10) + "px")
+								.style("top", (event.pageY + 10) + "px");
+						})
+						.on("mouseout", function () {
+							// Hide the tooltip
+							event.stopPropagation(); // Prevent interference from parent listeners
+							tooltip.style("display", "none");
+						});
 				}
 				// });
 			} else {
