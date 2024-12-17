@@ -786,6 +786,7 @@ const infoPanelPrototype = {
 				})
 			});
 		} else if (nodeInfo.hasLabel("Container")) {
+
 			const incoming_tmp = nodeInfo.sources("dependsOn");
 			const outgoing_tmp = nodeInfo.targets("dependsOn");
 
@@ -793,27 +794,74 @@ const infoPanelPrototype = {
 			const outgoing = outgoing_tmp.filter(item => !both.includes(item));
 			const incoming = incoming_tmp.filter(item => !both.includes(item));
 
-			console.log(incoming_tmp, outgoing_tmp);
+			const both_edges = both.map((n) => [
+				nodeInfo._meta._graph.edges("dependsOn").find((e) => e.source().id() === n.id() && e.target().id() === nodeInfo.id()),
+				nodeInfo._meta._graph.edges("dependsOn").find((e) => e.target().id() === n.id() && e.source().id() === nodeInfo.id())
+			]);
+			console.log("both", both_edges);
+			const incoming_edges = nodeInfo._meta._graph.edges("dependsOn", (e) => e.target().id() === nodeInfo.id() && incoming.map(n => n.id()).includes(e.source().id()));
+			const outgoing_edges = nodeInfo._meta._graph.edges("dependsOn", (e) => e.source().id() === nodeInfo.id() && outgoing.map(n => n.id()).includes(e.target().id()));
 
-			// if (incoming.length > 0) {
-			// 	renderData.properties.push({
-			// 		key: "incomingDependencies",
-			// 		value: incoming.map(n => {
-			// 			const d = d3.create('div');
-			// 			d.append('h3')
-			// 				.attr("class", "info")
-			// 				.text(m.property("simpleName"));
+			if (incoming_edges.length > 0) {
+				renderData.properties.push({
+					key: "incomingDependencies",
+					value: incoming_edges.map(e => {
+						const d = d3.create('div');
+						d.append('h3')
+							.attr("class", "info")
+							.text(e.source().property("qualifiedName"));
 
-			// 			d.append('div')
-			// 				.attr("class", "info")
-			// 				.attr("style", m.property("layer") ? `background-color: hsl(${stringToHue(m.property("layer"))}, 100%, 95%);` : null)
-			// 				.html(m.property("description"));
+						d.append('div')
+							.attr("class", "info")
+							.html(e.property("description"));
 
 
-			// 			return d.node().outerHTML;
-			// 		})
-			// 	});
-			// }
+						return d.node().outerHTML;
+					}),
+					style: "background-color: hsl(120, 100%, 95%);"
+				});
+			}
+			if (both_edges.length > 0) {
+				renderData.properties.push({
+					key: "coDependencies",
+					value: both_edges.map(([e1, e2]) => {
+						const d = d3.create('div');
+						d.append('h3')
+							.attr("class", "info")
+							.text(e1.source().property("qualifiedName"));
+
+						const innerd = d.append('div')
+							.attr("class", "info");
+
+						innerd.append("p")
+							.html(e1.property("description"));
+						innerd.append("p")
+							.html(e2.property("description"));
+
+						return d.node().outerHTML;
+					}),
+					style: "background-color: hsl(43, 100%, 95%);"
+				});
+			}
+			if (outgoing_edges.length > 0) {
+				renderData.properties.push({
+					key: "outgoingDependencies",
+					value: outgoing_edges.map(e => {
+						const d = d3.create('div');
+						d.append('h3')
+							.attr("class", "info")
+							.text(e.target().property("qualifiedName"));
+
+						d.append('div')
+							.attr("class", "info")
+							.html(e.property("description"));
+
+
+						return d.node().outerHTML;
+					}),
+					style: "background-color: hsl(240, 100%, 95%);"
+				});
+			}
 		}
 
 		return renderData;
