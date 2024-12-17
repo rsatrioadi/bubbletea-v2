@@ -246,12 +246,14 @@ const getBubbleTeaDataWithContext = (context) => (pkg) => {
 
 	const dominant = dominatingLayers(averageCounts);
 
-	return {
+	const result = {
 		package: pkg,
 		dominant,
 		bubbleTeaData: averageCounts,
 		bubbleData: data
 	};
+
+	return result;
 }
 
 // Helper function to create positions array
@@ -508,7 +510,12 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 	// Categorize bubbleTeaData objects into layers based on `dominant`
 	bubbleTeaDataArray.forEach(bubbleTeaData => {
 		const key = bubbleTeaData.dominant.sort((a, b) => context.layers.indexOf(a) - context.layers.indexOf(b)).join(", ");
-		if (key in layers) layers[key].push(bubbleTeaData);
+		if (key in layers) { 
+			layers[key].push(bubbleTeaData); 
+		} else { 
+			bubbleTeaData.dominant = [];
+			layers[''].push(bubbleTeaData); 
+		}
 	});
 
 	const svgWidth = 1200;
@@ -567,7 +574,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 				groups.forEach((g, i) => {
 					servingTableG.node().append(g.node());
 					const bbox = bboxes[i];
-					g.attr("transform", `translate(${(tableWidth - layerWidth) + (layerWidth - bbox.width) / 2}, ${yOffset + bubbleSpacing/2})`);
+					g.attr("transform", `translate(${(tableWidth - layerWidth) + (layerWidth - bbox.width) / 2}, ${yOffset + bubbleSpacing / 2})`);
 					yOffset += bbox.height + bubbleSpacing;
 				});
 
@@ -658,7 +665,7 @@ const drawServingTableWithContext = (context) => (bubbleTeaDataArray) => {
 				yOffset += layerHeight;
 				totalHeight += layerHeight;
 			}
-			g.attr("transform", `translate(${xOffset - bbox.x}, ${layerOffset + yOffset - maxTeaHeight + bubbleSpacing/2})`);
+			g.attr("transform", `translate(${xOffset - bbox.x}, ${layerOffset + yOffset - maxTeaHeight + bubbleSpacing / 2})`);
 			xOffset += bbox.width + bubbleSpacing;
 		});
 
@@ -781,7 +788,7 @@ const infoPanelPrototype = {
 						.attr("style", m.property("layer") ? `background-color: hsl(${stringToHue(m.property("layer"))}, 100%, 95%);` : null)
 						.html(m.property("description"));
 
-						
+
 					return d.node().outerHTML;
 				})
 			});
@@ -798,7 +805,6 @@ const infoPanelPrototype = {
 				nodeInfo._meta._graph.edges("dependsOn").find((e) => e.source().id() === n.id() && e.target().id() === nodeInfo.id()),
 				nodeInfo._meta._graph.edges("dependsOn").find((e) => e.target().id() === n.id() && e.source().id() === nodeInfo.id())
 			]);
-			console.log("both", both_edges);
 			const incoming_edges = nodeInfo._meta._graph.edges("dependsOn", (e) => e.target().id() === nodeInfo.id() && incoming.map(n => n.id()).includes(e.source().id()));
 			const outgoing_edges = nodeInfo._meta._graph.edges("dependsOn", (e) => e.source().id() === nodeInfo.id() && outgoing.map(n => n.id()).includes(e.target().id()));
 
@@ -1004,7 +1010,6 @@ function drawArrows(svg, source, dependencies) {
 
 	const g = svg.select("g");
 	const source_id = source.hasLabel("Structure") ? source.property("package").id() : source.id();
-	console.log(source_id);
 	const thisG = g.select(`g[id='${source_id}']`);
 	const thisCenter = getTransformedPosition(thisG);
 
@@ -1016,10 +1021,6 @@ function drawArrows(svg, source, dependencies) {
 		if (!targetG.empty() && targetG.node() !== thisG.node()) {
 			const targetCenter = getTransformedPosition(targetG);
 
-			const targetPoint = getIntersectionPoint(thisCenter, targetCenter);
-
-			// console.log({ g: targetG.attr("id"), center: targetCenter });
-
 			const line = g.append('line')
 				.attr("class", "dep-line")
 				.attr('x1', thisCenter.cx)
@@ -1029,8 +1030,8 @@ function drawArrows(svg, source, dependencies) {
 				.attr('stroke-width', '3pt')
 				.attr('stroke-opacity', 0.5)
 				.attr('stroke', 'blue');
-				// .attr("stroke-dasharray", "21, 7")
-				// .attr("stroke-dashoffset", 0);
+			// .attr("stroke-dasharray", "21, 7")
+			// .attr("stroke-dashoffset", 0);
 
 			moveAfter(targetG, line);
 		}
@@ -1042,10 +1043,6 @@ function drawArrows(svg, source, dependencies) {
 		if (!sourceG.empty() && sourceG.node() !== thisG.node()) {
 			const sourceCenter = getTransformedPosition(sourceG);
 
-			const sourcePoint = getIntersectionPoint(sourceCenter, thisCenter);
-
-			// console.log({ g: sourceG.attr("id"), center: sourceCenter });
-
 			const line = g.append('line')
 				.attr("class", "dep-line")
 				.attr('x1', sourceCenter.cx)
@@ -1055,8 +1052,8 @@ function drawArrows(svg, source, dependencies) {
 				.attr('stroke-width', '3pt')
 				.attr('stroke-opacity', 0.5)
 				.attr('stroke', 'green');
-				// .attr("stroke-dasharray", "21, 7")
-				// .attr("stroke-dashoffset", 0);
+			// .attr("stroke-dasharray", "21, 7")
+			// .attr("stroke-dashoffset", 0);
 
 			moveAfter(sourceG, line);
 		}
@@ -1067,10 +1064,6 @@ function drawArrows(svg, source, dependencies) {
 		const sourceG = g.select(`g[id='${node.id()}']`);
 		if (!sourceG.empty() && sourceG.node() !== thisG.node()) {
 			const sourceCenter = getTransformedPosition(sourceG);
-
-			const sourcePoint = getIntersectionPoint(sourceCenter, thisCenter);
-
-			// console.log({ g: sourceG.attr("id"), center: sourceCenter });
 
 			const line = g.append('line')
 				.attr("class", "dep-line")
@@ -1118,7 +1111,6 @@ document.addEventListener('DOMContentLoaded', () => {
 				const invokes = jsonData.elements.edges.filter((e) => e.data.label === "invokes");
 				const hasScript = jsonData.elements.edges.filter((e) => e.data.label === "hasScript");
 				const calls = lift(hasScript, invokes, "calls").filter((e) => e.data.source !== e.data.target);
-				console.log("calls", calls);
 				jsonData.elements.edges = [...jsonData.elements.edges, ...calls];
 
 				const context = {

@@ -156,7 +156,6 @@ const graphPrototype = {
 		return this.elements.nodes;
 	},
 	edges(label, predicate) {
-		console.log(label, predicate);
 		if (label) {
 			if (predicate) {
 				return (this._meta._edges[label]??[]).filter(predicate);
