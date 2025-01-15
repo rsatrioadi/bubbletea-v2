@@ -10,9 +10,19 @@ import { createTooltipManager } from './tooltipManager.js';
 /**
  * initFileUpload:
  *   - Hooks up the file input and upload button.
- *   - The core logic is in handleFileUpload, which is partially refactored into smaller helpers.
+ *   - Also checks if there's a '?p=<filename>' param and immediately loads that file if found.
  */
 export function initFileUpload() {
+	// 1) Check for URL param: ?p=<filename>
+	const urlParams = new URLSearchParams(window.location.search);
+	const filenameParam = urlParams.get('p'); // e.g. ?p=demo => "demo"
+
+	// If we have ?p=..., load the local file
+	if (filenameParam) {
+		handleUrlParamFile(filenameParam); // We'll create this function below
+	}
+
+	// 2) Normal file-upload logic
 	const fileInput = document.getElementById('file-selector');
 	fileInput.addEventListener('change', handleFileUpload);
 
@@ -21,83 +31,100 @@ export function initFileUpload() {
 }
 
 /**
- * handleFileUpload:
- *   - Orchestrates reading the selected file, parsing JSON, 
- *     building the graph/context, rendering the serving table, 
- *     and setting up all interactions (zoom, selection, tooltips).
+ * handleUrlParamFile:
+ *   - Fetches ./data/<filename>.json, parses the JSON, then
+ *     calls the same flow as if we read from a file.
  */
+function handleUrlParamFile(filename) {
+	// Attempt to fetch the local JSON
+	fetch(`./data/${filename}.json`)
+		.then(resp => {
+			if (!resp.ok) {
+				throw new Error(`HTTP ${resp.status} - ${resp.statusText}`);
+			}
+			return resp.text();
+		})
+		.then(rawText => {
+			const jsonData = parseJSONData(rawText, filename);
+			if (!jsonData) return;
+			handleParsedData(jsonData, filename);
+		})
+		.catch(err => {
+			alert(`Could not load file "./data/${filename}.json": ${err}`);
+		});
+}
+
+/**
+ * handleParsedData:
+ *   - This is the common code that runs after we successfully parse JSON data,
+ *     whether from a user-uploaded file or from URL param fetch.
+ */
+function handleParsedData(jsonData, fileName) {
+	// Display the loaded filename in #filename
+	document.getElementById("filename").textContent = `BubbleTea 2.0 – ${fileName}`;
+
+	// Clear old chart
+	const chartContainer = document.getElementById('chart-container');
+	chartContainer.innerHTML = "";
+
+	// 1) Build the context & augment edges
+	const context = buildContext(jsonData);
+
+	// 2) Render the serving table
+	const servingTable = renderServingTable(context, chartContainer);
+	if (!servingTable) return;
+
+	// 3) Zoom & resize
+	const g = setupZoomAndResize(servingTable, chartContainer);
+
+	// 4) Selection interactions
+	setupSelectionInteractions(g, context);
+
+	// 5) Tooltips
+	setupTooltips(context);
+}
+
 function handleFileUpload(event) {
 	const file = event.target.files[0];
 	if (!file) return;
 
 	const reader = new FileReader();
 	reader.onload = (e) => {
-		// 1) Parse the JSON
-		const jsonData = parseJSONFile(e);
+		const rawText = e.target.result;
+		const jsonData = parseJSONData(rawText, file.name);
 		if (!jsonData) return;
 
-		// 2) Build the "context" and augment the edges with "calls"
-		const context = buildContext(jsonData);
-
-		// 3) Render the "serving table" for package nodes
-		const chartContainer = document.getElementById('chart-container');
-		const servingTable = renderServingTable(context, chartContainer);
-		if (!servingTable) return;
-
-		// 4) Set up zoom and resizing on the rendered table
-		const g = setupZoomAndResize(servingTable, chartContainer);
-
-		// 5) Attach background click + selection logic
-		setupSelectionInteractions(g, context);
-
-		// 6) Set up tooltips on hover
-		setupTooltips(context);
+		handleParsedData(jsonData, file.name);
 	};
 
 	reader.readAsText(file);
 }
 
+
 /* ------------------------------ HELPER FUNCTIONS ------------------------------ */
 
 /**
- * parseJSONFile:
- *   - Safely parses the FileReader result as JSON and verifies minimal structure.
- *   - Returns the parsed object or null if invalid.
+ * parseJSONData:
+ *   - Parse a raw string, validate it has .elements.nodes,
+ *     or return null if invalid.
  */
-function parseJSONFile(e) {
+function parseJSONData(rawText, fileName) {
 	let jsonData;
 	try {
-		jsonData = JSON.parse(e.target.result);
+		jsonData = JSON.parse(rawText);
 	} catch (err) {
 		alert("Could not parse JSON file.");
 		return null;
 	}
 
-	// Basic validation
 	if (!jsonData || !jsonData.elements || !Array.isArray(jsonData.elements.nodes)) {
 		alert("The JSON does not contain the expected structure.");
 		return null;
 	}
 
-	// Display the filename
-	const fileName = (e.target.fileName || e.target.filename || "") || e.target.__fileName;
-	document.getElementById("filename").textContent = `BubbleTea 2.0 – ${fileName || "Imported File"}`;
-
-	// If the <input> has no custom filename, fallback to the File object:
-	if (!fileName) {
-		// If we rely on the original <file> object name
-		const file = e.target.files?.[0];
-		if (file) {
-			document.getElementById("filename").textContent = `BubbleTea 2.0 – ${file.name}`;
-		}
-	}
-
-	// Clear any old chart
-	const chartContainer = document.getElementById("chart-container");
-	chartContainer.innerHTML = "";
-
 	return jsonData;
 }
+
 
 /**
  * buildContext:
