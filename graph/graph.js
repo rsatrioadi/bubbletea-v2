@@ -93,29 +93,14 @@ const edgePrototype = {
 	},
 	source() {
 		if (this._meta._source === undefined && this.data.source) {
-			const nodes = this._meta._graph.nodes();
-			this._meta._source = null;
-			for (let i = 0; i < nodes.length; i++) {
-				const node = nodes[i];
-				if (node.id() === this.data.source) {
-					this._meta._source = node;
-					break;
-				}
-			}
+			// direct map lookup
+			this._meta._source = this._meta._graph._meta._nodes[this.data.source] ?? null;
 		}
 		return this._meta._source;
 	},
 	target() {
 		if (this._meta._target === undefined && this.data.target) {
-			const nodes = this._meta._graph.nodes();
-			this._meta._target = null;
-			for (let i = 0; i < nodes.length; i++) {
-				const node = nodes[i];
-				if (node.id() === this.data.target) {
-					this._meta._target = node;
-					break;
-				}
-			}
+			this._meta._target = this._meta._graph._meta._nodes[this.data.target] ?? null;
 		}
 		return this._meta._target;
 	}
@@ -124,17 +109,46 @@ const edgePrototype = {
 // Graph Prototype
 const graphPrototype = {
 	addNode(nodeData) {
-		nodeData._meta = {};
-		attachNode(node, this);
-		this.elements.nodes.push(node);
+		if (!nodeData.id) {
+			throw new Error('Node must have an "id" property');
+		}
 
-		// Update the nodes map
-		this._meta._nodes[nodeData.id] = node;
+		// Check if the node ID already exists in this graph
+		if (this._meta._nodes[nodeData.id]) {
+			console.warn(`Node with id "${nodeData.id}" already exists. Overwriting...`);
+		}
 
-		return node;
+		// Initialize the node's _meta structure, if not present
+		nodeData._meta = nodeData._meta || {};
+
+		// Attach the node prototype, referencing this graph
+		attachNode(nodeData, this);
+
+		// Add to the array of nodes in the graph
+		this.elements.nodes.push(nodeData);
+
+		// Store in the node map by ID for fast lookup
+		this._meta._nodes[nodeData.id] = nodeData;
+
+		return nodeData;
 	},
 	addEdge(sourceNode, targetNode, edgeLabel) {
-		const edge = { data: { label: edgeLabel, source: sourceNode, target: targetNode, properties: {} }, _meta: {} };
+		// sourceNode/targetNode might be objects or IDs. If IDs, look up the node:
+		const sNode = typeof sourceNode === 'string' ? this.node(sourceNode) : sourceNode;
+		const tNode = typeof targetNode === 'string' ? this.node(targetNode) : targetNode;
+
+		// Create the new edge object
+		const edge = {
+			data: {
+				label: edgeLabel,
+				source: sNode.id(),
+				target: tNode.id(),
+				properties: {}
+			},
+			_meta: {}
+		};
+
+		// Attach the edge prototype and add to the graph
 		attachEdge(edge, this);
 		this.elements.edges.push(edge);
 
@@ -143,6 +157,17 @@ const graphPrototype = {
 			this._meta._edges[edgeLabel] = [];
 		}
 		this._meta._edges[edgeLabel].push(edge);
+
+		// ---- Invalidate cached sources/targets for the two nodes ----
+		// So next time node.sources(...) or node.targets(...) is called, it recalculates.
+		if (sNode && sNode._meta) {
+			sNode._meta._sources = {};
+			sNode._meta._targets = {};
+		}
+		if (tNode && tNode._meta) {
+			tNode._meta._sources = {};
+			tNode._meta._targets = {};
+		}
 
 		return edge;
 	},

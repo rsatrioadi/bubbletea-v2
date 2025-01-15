@@ -22,7 +22,7 @@ To host BubbleTea 2.0 locally or on your own server, follow these steps:
 2. Serve the files using a web server such as:  
    - **Python**:  
      ```bash
-     python -m http.server
+     python -m http.server 2825
      ```  
    - **nginx** or other web servers.
 
