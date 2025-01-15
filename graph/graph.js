@@ -250,51 +250,85 @@ export const invert = (edgeList) =>
 		}
 	}));
 
-export const compose = function (l1, l2, newlabel) {
-	if (!Array.isArray(l1) || !Array.isArray(l2)) return [];
-
-	// Create a mapping from l2 with multiple targets per source
+/**
+ * buildMapping:
+ *   - Creates a Map keyed by "source" from the second edge list (l2).
+ *   - Each entry is an array of { target, label, weight }.
+ */
+function buildMapping(l2) {
 	const mapping = new Map();
 
 	for (const { data: { source, target, label, properties } } of l2) {
 		const weight = properties?.weight !== undefined ? properties.weight : 1;
-
 		if (!mapping.has(source)) {
 			mapping.set(source, []);
 		}
 		mapping.get(source).push({ target, label, weight });
 	}
 
-	const aggregatedEdges = new Map(); // Map to aggregate weights for same source-target pairs
+	return mapping;
+}
 
-	// Process l1 and compose new results
+/**
+ * composeEdges:
+ *   - Uses the mapping from l2 to connect edges from l1.
+ *   - Aggregates weights in a Map for same source-target pairs.
+ *
+ * @param {Array} l1 - Array of edges (first relationship).
+ * @param {Map} mapping - Output of buildMapping(l2).
+ * @param {String} newlabel - Optional new label for the composed edges.
+ * @returns {Array} - Composed edges (each with data: { source, target, label, properties }).
+ */
+function composeEdges(l1, mapping, newlabel) {
+	const aggregatedEdges = new Map(); // key => edge object
+
 	for (const { data: { source: s1, target: t1, label, properties } } of l1) {
-		const mappings = mapping.get(t1);
+		// Look up possible connections for t1 in the mapping
+		const connections = mapping.get(t1);
+		if (!connections) continue;
 
-		if (mappings) {
-			for (const mappingEntry of mappings) {
-				const newWeight = mappingEntry.weight * (properties?.weight !== undefined ? properties.weight : 1);
-				const key = `${s1}-${mappingEntry.target}`; // Unique key for source-target pair
+		for (const { target, label: secondLabel, weight: secondWeight } of connections) {
+			const combinedWeight = secondWeight * (properties?.weight ?? 1);
+			const key = `${s1}-${target}`; // unique key for aggregated pair
 
-				if (!aggregatedEdges.has(key)) {
-					// Add a new entry
-					aggregatedEdges.set(key, {
-						data: {
-							source: s1,
-							target: mappingEntry.target,
-							label: newlabel || `${label}-${mappingEntry.label}`,
-							properties: { weight: newWeight },
-						}
-					});
-				} else {
-					// Update the weight of the existing entry
-					aggregatedEdges.get(key).data.properties.weight += newWeight;
-				}
+			if (!aggregatedEdges.has(key)) {
+				// Create a new edge
+				aggregatedEdges.set(key, {
+					data: {
+						source: s1,
+						target,
+						label: newlabel || `${label}-${secondLabel}`,
+						properties: { weight: combinedWeight },
+					}
+				});
+			} else {
+				// Update existing edge's weight
+				aggregatedEdges.get(key).data.properties.weight += combinedWeight;
 			}
 		}
 	}
 
 	return Array.from(aggregatedEdges.values());
+}
+
+/**
+ * compose:
+ *   - Composes two lists of edges (l1, l2) by chaining edges from l1 into edges from l2,
+ *     multiplying weights, and optionally applying a new label.
+ *
+ * @param {Array} l1 - Array of edges (first relationship).
+ * @param {Array} l2 - Array of edges (second relationship).
+ * @param {String} newlabel - Optional label for new edges.
+ * @returns {Array} - The composed edges.
+ */
+export const compose = function (l1, l2, newlabel) {
+	if (!Array.isArray(l1) || !Array.isArray(l2)) {
+		return [];
+	}
+
+	const mapping = buildMapping(l2);
+
+	return composeEdges(l1, mapping, newlabel);
 };
 
 
