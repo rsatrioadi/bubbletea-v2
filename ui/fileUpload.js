@@ -4,6 +4,8 @@ import { createInfoPanel } from './infoPanel.js';
 import { drawArrows } from '../render/arrows.js';
 import { getBubbleTeaDataWithContext } from '../model/bubbleTeaData.js';
 import { drawServingTableWithContext } from '../render/servingTable.js';
+import { createSignal } from '../signal/signal.js';
+import { createTooltipManager } from './tooltipManager.js';
 
 /**
  * initFileUpload:
@@ -49,7 +51,7 @@ function handleFileUpload(event) {
 		setupSelectionInteractions(g, context);
 
 		// 6) Set up tooltips on hover
-		setupTooltips();
+		setupTooltips(context);
 	};
 
 	reader.readAsText(file);
@@ -141,6 +143,11 @@ function buildContext(jsonData) {
 	context.arrowRenderer = (nodeInfo) => {
 		drawArrows(d3.select("svg"), nodeInfo, pkgDepsOf(nodeInfo));
 	};
+
+	// Tooltip management
+	context.hoverSignal = createSignal();
+	context.tooltipManager = createTooltipManager('#tooltip');
+	context.tooltipManager.connect(context.hoverSignal);
 
 	return context;
 }
@@ -257,26 +264,30 @@ function setupSelectionInteractions(g, context) {
  *   - Adds mouseover, mousemove, mouseout for .bubble and .tea elements, 
  *     using #tooltip for display.
  */
-function setupTooltips() {
-	const tooltip = d3.select("#tooltip");
-
+function setupTooltips(context) {
 	d3.selectAll(".bubble, .tea")
-		.on("mouseover", function (event, d) {
+		.on("mouseover", function (event, node) {
 			event.stopPropagation();
-			tooltip.style("display", "block")
-				.html(`<strong>${d.hasLabel("Structure")
-						? d.property("simpleName")
-						: d.property("qualifiedName")
-					}</strong>`);
+			context.hoverSignal.emit({
+				type: 'mouseover',
+				event,
+				node
+			});
 		})
-		.on("mousemove", function (event) {
+		.on("mousemove", function (event, node) {
 			event.stopPropagation();
-			tooltip
-				.style("left", (event.pageX + 10) + "px")
-				.style("top", (event.pageY + 10) + "px");
+			context.hoverSignal.emit({
+				type: 'mousemove',
+				event,
+				node
+			});
 		})
-		.on("mouseout", function (event) {
+		.on("mouseout", function (event, node) {
 			event.stopPropagation();
-			tooltip.style("display", "none");
+			context.hoverSignal.emit({
+				type: 'mouseout',
+				event,
+				node
+			});
 		});
 }
