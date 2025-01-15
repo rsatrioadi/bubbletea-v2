@@ -146,8 +146,10 @@ function buildContext(jsonData) {
 
 	// Tooltip management
 	context.hoverSignal = createSignal();
-	context.tooltipManager = createTooltipManager('#tooltip');
-	context.tooltipManager.connect(context.hoverSignal);
+	const tooltipManager = createTooltipManager('#tooltip');
+	tooltipManager.connect(context.hoverSignal);
+
+	context.deselectSignal = createSignal();
 
 	return context;
 }
@@ -237,15 +239,15 @@ function setupZoomAndResize(servingTable, chartContainer) {
 function setupSelectionInteractions(g, context) {
 	let lastSelection = null;
 
-	// Clear selection on background click
-	d3.select("#serving-table").on("click", () => {
+	// 1) Connect a slot to the deselectSignal
+	context.deselectSignal.connect(() => {
 		d3.select(lastSelection)?.attr("filter", null);
-		d3.selectAll(".dep-line").remove();
+		d3.selectAll('.dep-line').remove();
 		lastSelection = null;
-		document.getElementById("info-panel").innerHTML = "";
+		document.getElementById('info-panel').innerHTML = '';
 	});
 
-	// Selecting a bubble or tea
+	// 2) Selecting a bubble or tea
 	d3.selectAll(".bubble, .tea").on("click", function (event, d) {
 		event.stopPropagation();
 
