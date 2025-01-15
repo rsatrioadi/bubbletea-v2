@@ -1,194 +1,282 @@
 import { createGraph, lift } from '../graph/graph.js';
-import { pkgDepsOf } from '../model/nodes.js';  // for arrow rendering
-import { createInfoPanel } from './infoPanel.js';  // or wherever your infoPanel is
-import { drawArrows } from '../render/arrows.js';  // if you have a dedicated arrows.js
+import { pkgDepsOf } from '../model/nodes.js';
+import { createInfoPanel } from './infoPanel.js';
+import { drawArrows } from '../render/arrows.js';
 import { getBubbleTeaDataWithContext } from '../model/bubbleTeaData.js';
 import { drawServingTableWithContext } from '../render/servingTable.js';
 
 /**
  * initFileUpload:
- *   - Hooks up the file input and upload button
- *   - The actual logic to parse data and build the chart happens in handleFileUpload.
+ *   - Hooks up the file input and upload button.
+ *   - The core logic is in handleFileUpload, which is partially refactored into smaller helpers.
  */
 export function initFileUpload() {
-	// Listen for file selection changes
 	const fileInput = document.getElementById('file-selector');
 	fileInput.addEventListener('change', handleFileUpload);
 
-	// Listen for clicks on the “upload” button to trigger file selection
 	const uploadButton = document.getElementById('upload-button');
 	uploadButton.addEventListener('click', () => fileInput.click());
 }
 
 /**
  * handleFileUpload:
- *   - Reads the selected file, parses its JSON, and if valid, 
- *     builds the graph, context, and draws the “serving table” with bubble teas.
- *   - Also sets up event handlers for zoom, tooltips, etc.
+ *   - Orchestrates reading the selected file, parsing JSON, 
+ *     building the graph/context, rendering the serving table, 
+ *     and setting up all interactions (zoom, selection, tooltips).
  */
 function handleFileUpload(event) {
 	const file = event.target.files[0];
 	if (!file) return;
 
 	const reader = new FileReader();
-	reader.onload = function (e) {
-		const jsonData = JSON.parse(e.target.result);
+	reader.onload = (e) => {
+		// 1) Parse the JSON
+		const jsonData = parseJSONFile(e);
+		if (!jsonData) return;
 
-		// Basic validation
-		if (!jsonData || !jsonData.elements || !Array.isArray(jsonData.elements.nodes)) {
-			alert("The JSON does not contain the expected structure.");
-			return;
-		}
+		// 2) Build the "context" and augment the edges with "calls"
+		const context = buildContext(jsonData);
 
-		// Display the loaded filename (optional)
-		document.getElementById("filename").textContent = `BubbleTea 2.0 – ${file.name}`;
+		// 3) Render the "serving table" for package nodes
+		const chartContainer = document.getElementById('chart-container');
+		const servingTable = renderServingTable(context, chartContainer);
+		if (!servingTable) return;
 
-		// Possibly clear any old chart
-		const chartContainer = document.getElementById("chart-container");
-		chartContainer.innerHTML = "";
+		// 4) Set up zoom and resizing on the rendered table
+		const g = setupZoomAndResize(servingTable, chartContainer);
 
-		// --- 1) Build or transform the graph data ---
-		// a) Combine "invokes" + "hasScript" edges => "calls"
-		const invokes = jsonData.elements.edges.filter((e) => e.data.label === "invokes");
-		const hasScript = jsonData.elements.edges.filter((e) => e.data.label === "hasScript");
-		const calls = lift(hasScript, invokes, "calls").filter((e) => e.data.source !== e.data.target);
-		jsonData.elements.edges = [...jsonData.elements.edges, ...calls];
+		// 5) Attach background click + selection logic
+		setupSelectionInteractions(g, context);
 
-		// --- 2) Create the application context ---
-		const context = {
-			layers: [null, 'Presentation Layer', 'Service Layer', 'Domain Layer', 'Data Source Layer'],
-			graph: createGraph(jsonData),
-
-			// Example hues or config
-			roleStereotypeHues: {
-				"Controller": 294,
-				"Coordinator": 115,
-				"Information Holder": 355,
-				"Interfacer": 35,
-				"User Interfacer": 35,
-				"Internal Interfacer": 35,
-				"External Interfacer": 35,
-				"Service Provider": 216,
-				"Structurer": 321
-			},
-			dependencyProfileHues: {
-				inbound: 120,
-				outbound: 240,
-				transit: 60,
-				hidden: 0
-			}
-		};
-
-		// Create the info panel, arrow renderer, etc.
-		context.infoPanel = createInfoPanel(context)(document.getElementById("info-panel"));
-		context.arrowRenderer = (nodeInfo) => {
-			// For arrow drawing, we pass the node to drawArrows
-			drawArrows(d3.select("svg"), nodeInfo, pkgDepsOf(nodeInfo));
-		};
-
-		// --- 3) Build the serving table from all package (container) nodes ---
-		const packages = context.graph.nodes(
-			node => node.hasLabel("Container") && !node.hasLabel("Structure")
-		);
-		const getBubbleTeaData = getBubbleTeaDataWithContext(context);
-		const drawServingTable = drawServingTableWithContext(context);
-		const servingTable = drawServingTable(packages.map(getBubbleTeaData));
-
-		if (!servingTable) {
-			// If no packages or nothing drawn, just stop
-			return;
-		}
-
-		// Append servingTable to the DOM, set up zoom & other interactions
-		const divWidth = chartContainer.clientWidth;
-		const divHeight = chartContainer.clientHeight * 0.997;
-		servingTable.attr("width", divWidth).attr("height", divHeight);
-
-		chartContainer.appendChild(servingTable.node());
-
-		// We'll zoom the inner <g>, which typically has "id"="serving-table"
-		const g = servingTable.select("g");
-		const svgWidth = g.attr("width");
-		const scale = svgWidth ? (divWidth / svgWidth) * 0.6 : 1;
-
-		// Setup D3 zoom
-		const zoom = d3.zoom().on('zoom', ({ transform }) => {
-			g.attr('transform', transform);
-		});
-		servingTable.call(zoom);
-
-		// Set initial zoom transform
-		const initialTransform = d3.zoomIdentity.translate(divWidth * 0.2, 12).scale(scale);
-		servingTable.call(zoom.transform, initialTransform);
-
-		// Add a reset-zoom button
-		const resetZoom = document.createElement("button");
-		resetZoom.id = "reset-zoom";
-		resetZoom.textContent = "🧭";
-		resetZoom.addEventListener("click", () => {
-			servingTable.call(zoom.transform, initialTransform);
-		});
-		chartContainer.appendChild(resetZoom);
-
-		// Observe resizing of the container
-		const resizeObserver = new ResizeObserver(entries => {
-			for (let entry of entries) {
-				if (entry.target === chartContainer) {
-					servingTable
-						.attr("width", entry.contentRect.width)
-						.attr("height", entry.contentRect.height);
-
-					// Adjust initial transform for new width
-					initialTransform.x = entry.contentRect.width * 0.2;
-					initialTransform.k = entry.contentRect.width / svgWidth * 0.6;
-				}
-			}
-		});
-		resizeObserver.observe(chartContainer);
-
-		// --- 4) Interaction: clear selection on background click ---
-		let lastSelection = null;
-		d3.select("#serving-table").on("click", function (event) {
-			d3.select(lastSelection)?.attr("filter", null);
-			d3.selectAll(".dep-line").remove();
-			lastSelection = null;
-			document.getElementById("info-panel").innerHTML = "";
-		});
-
-		// --- 5) Interaction: selecting a bubble or tea ---
-		d3.selectAll(".bubble, .tea").on("click", function (event, d) {
-			event.stopPropagation();
-			// Emit signal to show info, draw arrows
-			d.signal.emit(d);
-
-			// Highlight selection
-			d3.select(lastSelection)?.attr("filter", null);
-			d3.select(this).attr("filter", "url(#highlight)");
-			lastSelection = this;
-		});
-
-		// --- 6) Tooltips on mouseover ---
-		const tooltip = d3.select("#tooltip");
-		d3.selectAll(".bubble, .tea")
-			.on("mouseover", function (event, d) {
-				event.stopPropagation();
-				tooltip.style("display", "block")
-					.html(`<strong>${d.hasLabel("Structure")
-							? d.property("simpleName")
-							: d.property("qualifiedName")
-						}</strong>`);
-			})
-			.on("mousemove", function (event) {
-				event.stopPropagation();
-				tooltip
-					.style("left", (event.pageX + 10) + "px")
-					.style("top", (event.pageY + 10) + "px");
-			})
-			.on("mouseout", function (event) {
-				event.stopPropagation();
-				tooltip.style("display", "none");
-			});
+		// 6) Set up tooltips on hover
+		setupTooltips();
 	};
 
 	reader.readAsText(file);
+}
+
+/* ------------------------------ HELPER FUNCTIONS ------------------------------ */
+
+/**
+ * parseJSONFile:
+ *   - Safely parses the FileReader result as JSON and verifies minimal structure.
+ *   - Returns the parsed object or null if invalid.
+ */
+function parseJSONFile(e) {
+	let jsonData;
+	try {
+		jsonData = JSON.parse(e.target.result);
+	} catch (err) {
+		alert("Could not parse JSON file.");
+		return null;
+	}
+
+	// Basic validation
+	if (!jsonData || !jsonData.elements || !Array.isArray(jsonData.elements.nodes)) {
+		alert("The JSON does not contain the expected structure.");
+		return null;
+	}
+
+	// Display the filename
+	const fileName = (e.target.fileName || e.target.filename || "") || e.target.__fileName;
+	document.getElementById("filename").textContent = `BubbleTea 2.0 – ${fileName || "Imported File"}`;
+
+	// If the <input> has no custom filename, fallback to the File object:
+	if (!fileName) {
+		// If we rely on the original <file> object name
+		const file = e.target.files?.[0];
+		if (file) {
+			document.getElementById("filename").textContent = `BubbleTea 2.0 – ${file.name}`;
+		}
+	}
+
+	// Clear any old chart
+	const chartContainer = document.getElementById("chart-container");
+	chartContainer.innerHTML = "";
+
+	return jsonData;
+}
+
+/**
+ * buildContext:
+ *   - Takes the parsed JSON, merges 'invokes' + 'hasScript' => 'calls', creates the graph,
+ *     sets up layers, roleStereotypeHues, etc., and returns the complete "context".
+ */
+function buildContext(jsonData) {
+	// Merge edges: 'invokes' + 'hasScript' => 'calls'
+	const invokes = jsonData.elements.edges.filter(e => e.data.label === "invokes");
+	const hasScript = jsonData.elements.edges.filter(e => e.data.label === "hasScript");
+	const calls = lift(hasScript, invokes, "calls").filter(e => e.data.source !== e.data.target);
+
+	jsonData.elements.edges = [...jsonData.elements.edges, ...calls];
+
+	// Create context
+	const context = {
+		layers: [null, 'Presentation Layer', 'Service Layer', 'Domain Layer', 'Data Source Layer'],
+		graph: createGraph(jsonData),
+
+		roleStereotypeHues: {
+			"Controller": 294,
+			"Coordinator": 115,
+			"Information Holder": 355,
+			"Interfacer": 35,
+			"User Interfacer": 35,
+			"Internal Interfacer": 35,
+			"External Interfacer": 35,
+			"Service Provider": 216,
+			"Structurer": 321
+		},
+		dependencyProfileHues: {
+			inbound: 120,
+			outbound: 240,
+			transit: 60,
+			hidden: 0
+		}
+	};
+
+	// Create the info panel
+	context.infoPanel = createInfoPanel(context)(document.getElementById("info-panel"));
+
+	// Arrow renderer
+	context.arrowRenderer = (nodeInfo) => {
+		drawArrows(d3.select("svg"), nodeInfo, pkgDepsOf(nodeInfo));
+	};
+
+	return context;
+}
+
+/**
+ * renderServingTable:
+ *   - Finds all package nodes in the graph, builds bubbleTeaData, 
+ *     draws the serving table, and inserts it in 'chartContainer'.
+ *   - Returns the D3 selection of the <svg> or null if there's nothing to draw.
+ */
+function renderServingTable(context, chartContainer) {
+	const packages = context.graph.nodes(
+		node => node.hasLabel("Container") && !node.hasLabel("Structure")
+	);
+	if (!packages || packages.length === 0) return null;
+
+	const getBubbleTeaData = getBubbleTeaDataWithContext(context);
+	const drawServingTable = drawServingTableWithContext(context);
+
+	const servingTable = drawServingTable(packages.map(getBubbleTeaData));
+	if (!servingTable) return null;
+
+	// Append to the DOM
+	const divWidth = chartContainer.clientWidth;
+	const divHeight = chartContainer.clientHeight * 0.997;
+	servingTable.attr("width", divWidth).attr("height", divHeight);
+
+	chartContainer.appendChild(servingTable.node());
+	return servingTable;
+}
+
+/**
+ * setupZoomAndResize:
+ *   - Attaches a D3 zoom handler to the <svg>, focusing on the inner <g> with id="serving-table".
+ *   - Also observes container resizing to adjust.
+ *   - Returns the <g> selection.
+ */
+function setupZoomAndResize(servingTable, chartContainer) {
+	const g = servingTable.select("g");
+	const svgWidth = g.attr("width");
+	const divWidth = chartContainer.clientWidth;
+
+	// Calculate scale
+	const scale = svgWidth ? (divWidth / svgWidth) * 0.6 : 1;
+	const zoom = d3.zoom().on('zoom', ({ transform }) => {
+		g.attr('transform', transform);
+	});
+	servingTable.call(zoom);
+
+	// Set initial transform
+	const initialTransform = d3.zoomIdentity.translate(divWidth * 0.2, 12).scale(scale);
+	servingTable.call(zoom.transform, initialTransform);
+
+	// Add reset-zoom button
+	const resetZoom = document.createElement("button");
+	resetZoom.id = "reset-zoom";
+	resetZoom.textContent = "🧭";
+	resetZoom.addEventListener("click", () => {
+		servingTable.call(zoom.transform, initialTransform);
+	});
+	chartContainer.appendChild(resetZoom);
+
+	// Observe resizing
+	const resizeObserver = new ResizeObserver(entries => {
+		for (let entry of entries) {
+			if (entry.target === chartContainer) {
+				servingTable
+					.attr("width", entry.contentRect.width)
+					.attr("height", entry.contentRect.height);
+
+				// Update initial transform for new width
+				initialTransform.x = entry.contentRect.width * 0.2;
+				initialTransform.k = entry.contentRect.width / svgWidth * 0.6;
+			}
+		}
+	});
+	resizeObserver.observe(chartContainer);
+
+	return g;
+}
+
+/**
+ * setupSelectionInteractions:
+ *   - Clears selection on background click, and handles bubble/tea selection clicks.
+ *   - Clears highlight filters, removes dep-line, updates the info panel, etc.
+ */
+function setupSelectionInteractions(g, context) {
+	let lastSelection = null;
+
+	// Clear selection on background click
+	d3.select("#serving-table").on("click", () => {
+		d3.select(lastSelection)?.attr("filter", null);
+		d3.selectAll(".dep-line").remove();
+		lastSelection = null;
+		document.getElementById("info-panel").innerHTML = "";
+	});
+
+	// Selecting a bubble or tea
+	d3.selectAll(".bubble, .tea").on("click", function (event, d) {
+		event.stopPropagation();
+
+		// Emit the signal for node info + arrow drawing
+		d.signal.emit(d);
+
+		// Highlight this selection, unhighlight the old
+		d3.select(lastSelection)?.attr("filter", null);
+		d3.select(this).attr("filter", "url(#highlight)");
+		lastSelection = this;
+	});
+}
+
+/**
+ * setupTooltips:
+ *   - Adds mouseover, mousemove, mouseout for .bubble and .tea elements, 
+ *     using #tooltip for display.
+ */
+function setupTooltips() {
+	const tooltip = d3.select("#tooltip");
+
+	d3.selectAll(".bubble, .tea")
+		.on("mouseover", function (event, d) {
+			event.stopPropagation();
+			tooltip.style("display", "block")
+				.html(`<strong>${d.hasLabel("Structure")
+						? d.property("simpleName")
+						: d.property("qualifiedName")
+					}</strong>`);
+		})
+		.on("mousemove", function (event) {
+			event.stopPropagation();
+			tooltip
+				.style("left", (event.pageX + 10) + "px")
+				.style("top", (event.pageY + 10) + "px");
+		})
+		.on("mouseout", function (event) {
+			event.stopPropagation();
+			tooltip.style("display", "none");
+		});
 }
