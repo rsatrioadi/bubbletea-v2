@@ -125,52 +125,6 @@ function parseJSONData(rawText, fileName) {
 	return jsonData;
 }
 
-function bfsSort(edgeList) {
-	// Step 1: Identify all sources and targets
-	const sources = new Set();
-	const targets = new Set();
-
-	edgeList.forEach((edge) => {
-		sources.add(edge.source());
-		targets.add(edge.target());
-	});
-
-	// Step 2: Find the root (a source that is not a target)
-	let root = null;
-	for (let src of sources) {
-		if (!Array.from(targets).some(tgt => tgt.id()===src.id())) {
-			root = src;
-			break;
-		}
-	}
-
-	if (root === null) {
-		throw new Error("No root found. Ensure there is a node that never appears as a target.");
-	}
-
-	// Step 3: Initialize BFS structures
-	const queue = [root];
-	const visited = new Set([root]);
-	const result = [];
-
-	// Step 4: Perform BFS
-	while (queue.length > 0) {
-		const current = queue.shift();
-		result.push(current);
-
-		// Find all neighbors by iterating through the edge list
-		edgeList.forEach((edge) => {
-			if (edge.source().id() === current.id() && !Array.from(visited).some(v => v.id()===edge.target().id())) {
-				queue.push(edge.target());
-				visited.add(edge.target());
-			}
-		});
-	}
-
-	return result;
-}
-
-
 /**
  * buildContext:
  *   - Takes the parsed JSON, merges 'invokes' + 'hasScript' => 'calls', creates the graph,
@@ -223,27 +177,81 @@ function buildContext(jsonData) {
 		}
 	};
 
-	context.dispatcher.on("select.infoPanel", displayInfo(context)("#info-panel"));
-	context.dispatcher.on("select.arrows", displayArrows("svg"));
-	context.dispatcher.on("select.viz", function(_, ele) {
-		// Highlight this selection, unhighlight the old
-		d3.select(context.lastSelection)?.attr("filter", null);
-		d3.select(ele).attr("filter", "url(#highlight)");
-		context.lastSelection = ele;
+	setupDispatchers(context);
+
+	return context;
+}
+
+function bfsSort(edgeList) {
+	// Step 1: Identify all sources and targets
+	const sources = new Set();
+	const targets = new Set();
+
+	edgeList.forEach((edge) => {
+		sources.add(edge.source());
+		targets.add(edge.target());
 	});
 
+	// Step 2: Find the root (a source that is not a target)
+	let root = null;
+	for (let src of sources) {
+		if (!Array.from(targets).some(tgt => tgt.id() === src.id())) {
+			root = src;
+			break;
+		}
+	}
+
+	if (root === null) {
+		throw new Error("No root found. Ensure there is a node that never appears as a target.");
+	}
+
+	// Step 3: Initialize BFS structures
+	const queue = [root];
+	const visited = new Set([root]);
+	const result = [];
+
+	// Step 4: Perform BFS
+	while (queue.length > 0) {
+		const current = queue.shift();
+		result.push(current);
+
+		// Find all neighbors by iterating through the edge list
+		edgeList.forEach((edge) => {
+			if (edge.source().id() === current.id() && !Array.from(visited).some(v => v.id() === edge.target().id())) {
+				queue.push(edge.target());
+				visited.add(edge.target());
+			}
+		});
+	}
+
+	return result;
+}
+
+function setupDispatchers(context) {
+
+	context.dispatcher.on("select.infoPanel", displayInfo(context)("#info-panel"));
 	context.dispatcher.on("deselect.infoPanel", clearInfo("#info-panel"));
+
+	context.dispatcher.on("select.arrows", displayArrows("svg"));
 	context.dispatcher.on("deselect.arrows", clearArrows("svg"));
-	context.dispatcher.on("deselect.viz", function() {
-		d3.select(context.lastSelection).attr("filter", null);
-		context.lastSelection = null;
-	});
+
+	context.dispatcher.on("select.viz", highlightSelection);
+	context.dispatcher.on("deselect.viz", removeHighlights);
 
 	context.dispatcher.on("mouseover.tooltip", showTooltip("#tooltip"));
 	context.dispatcher.on("mousemove.tooltip", updateTooltipPosition("#tooltip"));
 	context.dispatcher.on("mouseout.tooltip", hideTooltip("#tooltip"));
 
-	return context;
+	function highlightSelection(_, ele) {
+		d3.select(context.lastSelection)?.attr("filter", null);
+		d3.select(ele).attr("filter", "url(#highlight)");
+		context.lastSelection = ele;
+	}
+
+	function removeHighlights() {
+		d3.select(context.lastSelection).attr("filter", null);
+		context.lastSelection = null;
+	}
 }
 
 /**
