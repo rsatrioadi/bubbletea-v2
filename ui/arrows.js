@@ -1,6 +1,17 @@
+import { pkgDepsOf } from "../model/nodes.js";
 import { getTransformedPosition, bringToFront, moveAfter } from "../utils/domUtils.js";
 
-export function drawArrows(svg, source, dependencies) {
+export const clearArrows = (sel) => () => {
+	const svg = d3.select(sel);
+	svg.selectAll(".dep-line").remove();
+}
+
+// Arrow renderer
+export const displayArrows = (sel) => (node) => {
+	
+	const svg = d3.select(sel);
+	const source = node;
+	const dependencies = pkgDepsOf(node);
 
 	// Find common elements between outgoing and incoming
 	const both = dependencies.outgoing.filter(item => dependencies.incoming.includes(item));

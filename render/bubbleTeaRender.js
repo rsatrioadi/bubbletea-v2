@@ -72,10 +72,6 @@ export function drawBubbleTeaWithContext(context) {
 			clasz.property("layer", clsLayer);
 		});
 	
-		pkg.signal = createSignal();
-		pkg.signal.connect(context.infoPanel.renderInfo.bind(context.infoPanel));
-		pkg.signal.connect(context.arrowRenderer);
-	
 		return g;
 	};
 }

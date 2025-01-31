@@ -58,11 +58,6 @@ export function drawBubbleWithContext(context) {
 				);
 		}
 
-		// Attach signals for interaction
-		clasz.signal = createSignal();
-		clasz.signal.connect(context.infoPanel.renderInfo.bind(context.infoPanel));
-		clasz.signal.connect(context.arrowRenderer);
-
 		// "Shine" circle with gradient fill
 		bubble.append('circle')
 			.attr('class', 'shine')

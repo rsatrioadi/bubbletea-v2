@@ -1,11 +1,9 @@
 import { createGraph, lift } from '../graph/graph.js';
-import { pkgDepsOf } from '../model/nodes.js';
-import { createInfoPanel } from './infoPanel.js';
-import { drawArrows } from '../render/arrows.js';
+import { clearInfo, displayInfo } from './infoPanel.js';
+import { clearArrows, displayArrows } from './arrows.js';
 import { getBubbleTeaDataWithContext } from '../model/bubbleTeaData.js';
 import { drawServingTableWithContext } from '../render/servingTable.js';
-import { createSignal } from '../signal/signal.js';
-import { createTooltipManager } from './tooltipManager.js';
+import { hideTooltip, showTooltip, updateTooltipPosition } from './tooltip.js';
 import { hueMap } from '../utils/utils.js';
 
 /**
@@ -203,6 +201,8 @@ function buildContext(jsonData) {
 	const context = {
 		layers,
 		graph,
+		dispatcher: d3.dispatch("select","deselect","mouseover","mousemove","mouseout"),
+		lastSelection: null,
 
 		roleStereotypeHues: {
 			"Controller": 294,
@@ -223,20 +223,25 @@ function buildContext(jsonData) {
 		}
 	};
 
-	// Create the info panel
-	context.infoPanel = createInfoPanel(context)(document.getElementById("info-panel"));
+	context.dispatcher.on("select.infoPanel", displayInfo(context)("#info-panel"));
+	context.dispatcher.on("select.arrows", displayArrows("svg"));
+	context.dispatcher.on("select.viz", function(_, ele) {
+		// Highlight this selection, unhighlight the old
+		d3.select(context.lastSelection)?.attr("filter", null);
+		d3.select(ele).attr("filter", "url(#highlight)");
+		context.lastSelection = ele;
+	});
 
-	// Arrow renderer
-	context.arrowRenderer = (nodeInfo) => {
-		drawArrows(d3.select("svg"), nodeInfo, pkgDepsOf(nodeInfo));
-	};
+	context.dispatcher.on("deselect.infoPanel", clearInfo("#info-panel"));
+	context.dispatcher.on("deselect.arrows", clearArrows("svg"));
+	context.dispatcher.on("deselect.viz", function() {
+		d3.select(context.lastSelection).attr("filter", null);
+		context.lastSelection = null;
+	});
 
-	// Tooltip management
-	context.hoverSignal = createSignal();
-	const tooltipManager = createTooltipManager('#tooltip');
-	tooltipManager.connect(context.hoverSignal);
-
-	context.deselectSignal = createSignal();
+	context.dispatcher.on("mouseover.tooltip", showTooltip("#tooltip"));
+	context.dispatcher.on("mousemove.tooltip", updateTooltipPosition("#tooltip"));
+	context.dispatcher.on("mouseout.tooltip", hideTooltip("#tooltip"));
 
 	return context;
 }
@@ -324,28 +329,17 @@ function setupZoomAndResize(servingTable, chartContainer) {
  *   - Clears highlight filters, removes dep-line, updates the info panel, etc.
  */
 function setupSelectionInteractions(g, context) {
-	let lastSelection = null;
+	
+	d3.select("#serving-table")
+		.on("click", function (event, d) {
+			context.dispatcher.call("deselect", event, d, this);
+		});
 
-	// 1) Connect a slot to the deselectSignal
-	context.deselectSignal.connect(() => {
-		d3.select(lastSelection)?.attr("filter", null);
-		d3.selectAll('.dep-line').remove();
-		lastSelection = null;
-		document.getElementById('info-panel').innerHTML = '';
-	});
-
-	// 2) Selecting a bubble or tea
-	d3.selectAll(".bubble, .tea").on("click", function (event, d) {
-		event.stopPropagation();
-
-		// Emit the signal for node info + arrow drawing
-		d.signal.emit(d);
-
-		// Highlight this selection, unhighlight the old
-		d3.select(lastSelection)?.attr("filter", null);
-		d3.select(this).attr("filter", "url(#highlight)");
-		lastSelection = this;
-	});
+	d3.selectAll(".bubble, .tea")
+		.on("click", function (event, d) {
+			event.stopPropagation();
+			context.dispatcher.call("select", event, d, this);
+		});
 }
 
 /**
@@ -355,28 +349,16 @@ function setupSelectionInteractions(g, context) {
  */
 function setupTooltips(context) {
 	d3.selectAll(".bubble, .tea")
-		.on("mouseover", function (event, node) {
+		.on("mouseover", function (event, d) {
 			event.stopPropagation();
-			context.hoverSignal.emit({
-				type: 'mouseover',
-				event,
-				node
-			});
+			context.dispatcher.call("mouseover", event, d, this);
 		})
-		.on("mousemove", function (event, node) {
+		.on("mousemove", function (event, d) {
 			event.stopPropagation();
-			context.hoverSignal.emit({
-				type: 'mousemove',
-				event,
-				node
-			});
+			context.dispatcher.call("mousemove", event, d, this);
 		})
-		.on("mouseout", function (event, node) {
+		.on("mouseout", function (event, d) {
 			event.stopPropagation();
-			context.hoverSignal.emit({
-				type: 'mouseout',
-				event,
-				node
-			});
+			context.dispatcher.call("mouseout", event, d, this);
 		});
 }
