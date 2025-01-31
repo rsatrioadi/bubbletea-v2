@@ -1,12 +1,12 @@
 // Function to hash a string into a hue value between 0 and 359
+export var hueMap = {
+	'Presentation Layer': 0,
+	'Service Layer': 50,
+	'Domain Layer': 120,
+	'Data Source Layer': 240,
+};
+
 export const stringToHue = (str) => {
-	// Known mappings for certain layers
-	const hueMap = {
-		'Presentation Layer': 0,
-		'Service Layer': 50,
-		'Domain Layer': 120,
-		'Data Source Layer': 240,
-	};
 
 	// Fallback hashing function if not in hueMap
 	const hashHue = (s) => {

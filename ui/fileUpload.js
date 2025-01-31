@@ -6,6 +6,7 @@ import { getBubbleTeaDataWithContext } from '../model/bubbleTeaData.js';
 import { drawServingTableWithContext } from '../render/servingTable.js';
 import { createSignal } from '../signal/signal.js';
 import { createTooltipManager } from './tooltipManager.js';
+import { hueMap } from '../utils/utils.js';
 
 /**
  * initFileUpload:
@@ -37,7 +38,8 @@ export function initFileUpload() {
  */
 function handleUrlParamFile(filename) {
 	// Attempt to fetch the local JSON
-	fetch(`./data/${filename}.json`)
+	const filenameWithParam = filename + ".json";
+	fetch(`./data/${filenameWithParam}`)
 		.then(resp => {
 			if (!resp.ok) {
 				throw new Error(`HTTP ${resp.status} - ${resp.statusText}`);
@@ -45,12 +47,12 @@ function handleUrlParamFile(filename) {
 			return resp.text();
 		})
 		.then(rawText => {
-			const jsonData = parseJSONData(rawText, filename);
+			const jsonData = parseJSONData(rawText, filenameWithParam);
 			if (!jsonData) return;
-			handleParsedData(jsonData, filename);
+			handleParsedData(jsonData, filenameWithParam);
 		})
 		.catch(err => {
-			alert(`Could not load file "./data/${filename}.json": ${err}`);
+			alert(`Could not load file "./data/${filenameWithParam}": ${err}`);
 		});
 }
 
@@ -125,6 +127,51 @@ function parseJSONData(rawText, fileName) {
 	return jsonData;
 }
 
+function bfsSort(edgeList) {
+	// Step 1: Identify all sources and targets
+	const sources = new Set();
+	const targets = new Set();
+
+	edgeList.forEach((edge) => {
+		sources.add(edge.source());
+		targets.add(edge.target());
+	});
+
+	// Step 2: Find the root (a source that is not a target)
+	let root = null;
+	for (let src of sources) {
+		if (!Array.from(targets).some(tgt => tgt.id()===src.id())) {
+			root = src;
+			break;
+		}
+	}
+
+	if (root === null) {
+		throw new Error("No root found. Ensure there is a node that never appears as a target.");
+	}
+
+	// Step 3: Initialize BFS structures
+	const queue = [root];
+	const visited = new Set([root]);
+	const result = [];
+
+	// Step 4: Perform BFS
+	while (queue.length > 0) {
+		const current = queue.shift();
+		result.push(current);
+
+		// Find all neighbors by iterating through the edge list
+		edgeList.forEach((edge) => {
+			if (edge.source().id() === current.id() && !Array.from(visited).some(v => v.id()===edge.target().id())) {
+				queue.push(edge.target());
+				visited.add(edge.target());
+			}
+		});
+	}
+
+	return result;
+}
+
 
 /**
  * buildContext:
@@ -139,10 +186,23 @@ function buildContext(jsonData) {
 
 	jsonData.elements.edges = [...jsonData.elements.edges, ...calls];
 
+	const graph = createGraph(jsonData);
+	var layers;
+	const allowedDependencies = graph.edges("allowedDependency");
+	if (allowedDependencies && allowedDependencies.length) {
+		layers = bfsSort(graph.edges("allowedDependency")).map(l => l.property("simpleName"));
+		layers.forEach((l,i) => {
+			hueMap[l] = i * Math.floor(360/layers.length);
+		});
+		layers = [null, ...layers];
+	} else {
+		layers = ['Presentation Layer', 'Service Layer', 'Domain Layer', 'Data Source Layer'];
+	}
+
 	// Create context
 	const context = {
-		layers: [null, 'Presentation Layer', 'Service Layer', 'Domain Layer', 'Data Source Layer'],
-		graph: createGraph(jsonData),
+		layers,
+		graph,
 
 		roleStereotypeHues: {
 			"Controller": 294,
