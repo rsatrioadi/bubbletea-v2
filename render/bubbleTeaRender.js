@@ -1,7 +1,6 @@
 import { layerCompositionComparatorWithContext, dominatingLayersWithContext } from '../model/composition.js';
 import { drawBubbleWithContext } from './bubbleRender.js';
 import { average, stringToHue } from '../utils/utils.js';
-import { createSignal } from '../signal/signal.js';
 import { calculatePositions, calculateLayoutDimensions, drawLayoutContainer } from './layoutUtils.js';
 
 /**

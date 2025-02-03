@@ -1,5 +1,3 @@
-import { createSignal } from '../signal/signal.js';
-
 /**
  * drawBubbleWithContext(context)
  *   - returns a function that, given a data object { class, bubbleData },

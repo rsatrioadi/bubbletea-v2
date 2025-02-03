@@ -95,5 +95,15 @@ export function methodsOf(clasz) {
  * @returns {String} - The layer name if present, otherwise "Undefined".
  */
 export function layerOf(method) {
-	return method.property("layer") || "Undefined";
+
+	if (method.hasProperty("layer")) {
+		return method.property("layer");
+	}
+
+	const layerTargets = method.targets("implements").filter(t => t.property("kind")==="architectural layer");
+	if (layerTargets && layerTargets.length) {
+		return layerTargets[0].property("simpleName");
+	}
+
+	return "Undefined";
 }
