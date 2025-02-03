@@ -146,10 +146,10 @@ function buildContext(jsonData) {
 		layers.forEach((l,i) => {
 			hueMap[l] = i * Math.floor(360/layers.length);
 		});
-		layers = [null, ...layers];
 	} else {
 		layers = ['Presentation Layer', 'Service Layer', 'Domain Layer', 'Data Source Layer'];
 	}
+	layers = [null, ...layers];
 
 	// Create context
 	const context = {
